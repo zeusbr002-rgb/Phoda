@@ -2,11 +2,14 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { GoogleMap, useJsApiLoader, Marker, InfoWindow } from "@react-google-maps/api";
-import { Search, Plus, X, Leaf, Filter, Edit2, Trash2, History, LocateFixed, LogOut } from "lucide-react";
+// O Edit2 FOI ADICIONADO AQUI NESSA LINHA:
+import { Search, Plus, X, Leaf, History, LocateFixed, LogOut, Calendar as CalendarIcon, Download, Edit2 } from "lucide-react";
 import { collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc } from "firebase/firestore";
-// Importações novas de Auth
 import { signOut, onAuthStateChanged } from "firebase/auth";
 import { db, auth } from "../firebase";
+
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 const containerStyle = { width: "100vw", height: "100vh" };
 const unbCenter = { lat: -15.7624, lng: -47.8664 };
@@ -15,7 +18,6 @@ const iconMorta = 'data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%
 export default function MapaScreen() {
   const router = useRouter();
   
-  // Proteção de Rota (Expulsa se não estiver logado)
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (!user) router.push("/");
@@ -29,15 +31,16 @@ export default function MapaScreen() {
   
   const [mapCenter, setMapCenter] = useState(unbCenter);
   const [arvores, setArvores] = useState<any[]>([]);
+  const [historicoGlobal, setHistoricoGlobal] = useState<any[]>([]);
   const [novaLocalizacao, setNovaLocalizacao] = useState<{lat: number, lng: number} | null>(null);
   const [arvoreSelecionada, setArvoreSelecionada] = useState<any | null>(null);
   
-  // Estados de Filtro e Pesquisa
-  const [filtroMapa, setFiltroMapa] = useState("Todos");
   const [termoPesquisa, setTermoPesquisa] = useState("");
+  const [dataFiltro, setDataFiltro] = useState(""); 
 
-  const [especie, setEspecie] = useState("");
-  const [altura, setAltura] = useState("");
+  const [especie, setEspecie] = useState(""); 
+  const [nomeCientifico, setNomeCientifico] = useState("");
+  const [origem, setOrigem] = useState("Nativa");
   const [estadoSanitario, setEstadoSanitario] = useState("Bom");
 
   const { isLoaded } = useJsApiLoader({
@@ -48,18 +51,94 @@ export default function MapaScreen() {
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, "arvores"), (snapshot) => {
-      const lista = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setArvores(lista);
+      setArvores(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
     return () => unsubscribe();
   }, []);
 
-  // MOTOR DE BUSCA: Filtra pelo Estado Sanitário E pelo Texto da Barra
-  const arvoresFiltradas = arvores.filter(a => {
-    const matchFiltro = filtroMapa === "Todos" ? true : a.estadoSanitario === filtroMapa;
-    const matchPesquisa = termoPesquisa === "" ? true : a.especie.toLowerCase().includes(termoPesquisa.toLowerCase());
-    return matchFiltro && matchPesquisa;
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, "historico_servicos"), (snapshot) => {
+      setHistoricoGlobal(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const arvoresFiltradas = arvores.filter(arvore => {
+    const matchPesquisa = termoPesquisa === "" || arvore.especie?.toLowerCase().includes(termoPesquisa.toLowerCase());
+    
+    let matchData = true;
+    if (dataFiltro) {
+      const temServicoNaData = historicoGlobal.some(servico => {
+        if (!servico.dataExecucao || servico.arvoreId !== arvore.id) return false;
+        
+        const dataServico = servico.dataExecucao.toDate();
+        const dia = String(dataServico.getDate()).padStart(2, '0');
+        const mes = String(dataServico.getMonth() + 1).padStart(2, '0');
+        const ano = dataServico.getFullYear();
+        const dataFormatada = `${ano}-${mes}-${dia}`;
+        
+        return dataFormatada === dataFiltro;
+      });
+      matchData = temServicoNaData;
+    }
+
+    return matchPesquisa && matchData;
   });
+
+  const gerarRelatorioPDF = () => {
+    if (!dataFiltro) {
+      alert("Por favor, selecione uma data no filtro superior para gerar o relatório.");
+      return;
+    }
+
+    const servicosDoDia = historicoGlobal.filter(servico => {
+      if (!servico.dataExecucao) return false;
+      const d = servico.dataExecucao.toDate();
+      const formatada = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      return formatada === dataFiltro;
+    });
+
+    if (servicosDoDia.length === 0) {
+      alert("Nenhum serviço foi registrado na data selecionada.");
+      return;
+    }
+
+    const doc = new jsPDF('landscape'); 
+    
+    const dataBr = dataFiltro.split('-').reverse().join('/');
+    doc.setFontSize(16);
+    doc.text(`Relatório de Execução de Serviços - Data: ${dataBr}`, 14, 15);
+
+    const linhasTabela = servicosDoDia.map((servico, index) => {
+      const arvore = arvores.find(a => a.id === servico.arvoreId) || {};
+      
+      return [
+        index + 1,
+        arvore.especie || "-",
+        arvore.nomeCientifico || "-",
+        arvore.origem || "-",
+        servico.tipoServico || "-",
+        servico.objetivoPoda || "-",
+        servico.tipoPoda || "-",
+        (servico.conflitos || []).join(", ") || "-",
+        servico.dap || "-",
+        servico.detalhes || servico.motivoQueda || "-",
+        arvore.localizacao?.lat?.toFixed(6) || "-",
+        arvore.localizacao?.lng?.toFixed(6) || "-"
+      ];
+    });
+
+    autoTable(doc, {
+      head: [['Ponto', 'Nome comum', 'Nome Científico', 'Origem', 'Serviço', 'Objetivo', 'Tipo de Poda', 'Conflito', 'DAP', 'Motivo detalhado', 'Latitude', 'Longitude']],
+      body: linhasTabela,
+      startY: 22,
+      styles: { fontSize: 8, cellPadding: 2 },
+      headStyles: { fillColor: [5, 150, 105], textColor: 255, fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [240, 253, 244] },
+    });
+
+    doc.save(`Relatorio_Servicos_${dataFiltro}.pdf`);
+  };
 
   const getIconUrl = (estado: string) => {
     if (estado === "Morta") return iconMorta;
@@ -77,15 +156,14 @@ export default function MapaScreen() {
     }
   };
 
-  const handleLogout = async () => {
-    await signOut(auth);
-  };
+  const handleLogout = async () => await signOut(auth);
 
   const handleMapClick = (e: google.maps.MapMouseEvent) => {
     if (e.latLng) {
       setNovaLocalizacao({ lat: e.latLng.lat(), lng: e.latLng.lng() });
       setArvoreSelecionada(null); setDrawerMode("REGISTRO"); setIsMenuOpen(true);
-      setEspecie(""); setAltura(""); setEstadoSanitario("Bom");
+      
+      setEspecie(""); setNomeCientifico(""); setOrigem("Nativa"); setEstadoSanitario("Bom");
     }
   };
 
@@ -95,25 +173,21 @@ export default function MapaScreen() {
     e.preventDefault(); setLoading(true);
     try {
       if (drawerMode === "EDITAR" && arvoreSelecionada) {
-        await updateDoc(doc(db, "arvores", arvoreSelecionada.id), { especie, altura, estadoSanitario });
+        await updateDoc(doc(db, "arvores", arvoreSelecionada.id), { especie, nomeCientifico, origem, estadoSanitario });
       } else {
-        await addDoc(collection(db, "arvores"), { especie, altura, estadoSanitario, dataRegistro: new Date(), localizacao: novaLocalizacao || unbCenter });
+        await addDoc(collection(db, "arvores"), { especie, nomeCientifico, origem, estadoSanitario, dataRegistro: new Date(), localizacao: novaLocalizacao || unbCenter });
       }
-      setEspecie(""); setAltura(""); setEstadoSanitario("Bom"); setArvoreSelecionada(null); fecharMenu();
+      setEspecie(""); setNomeCientifico(""); setOrigem("Nativa"); setEstadoSanitario("Bom"); 
+      setArvoreSelecionada(null); fecharMenu();
     } catch (error) { alert("Erro ao salvar."); } finally { setLoading(false); }
-  };
-
-  const handleExcluirArvore = async () => {
-    if (!arvoreSelecionada) return;
-    if (window.confirm("Excluir este registro?")) {
-      await deleteDoc(doc(db, "arvores", arvoreSelecionada.id));
-      setArvoreSelecionada(null);
-    }
   };
 
   const abrirPainelEditar = () => {
     if (!arvoreSelecionada) return;
-    setEspecie(arvoreSelecionada.especie); setAltura(arvoreSelecionada.altura); setEstadoSanitario(arvoreSelecionada.estadoSanitario);
+    setEspecie(arvoreSelecionada.especie || ""); 
+    setNomeCientifico(arvoreSelecionada.nomeCientifico || ""); 
+    setOrigem(arvoreSelecionada.origem || "Nativa");
+    setEstadoSanitario(arvoreSelecionada.estadoSanitario || "Bom");
     setDrawerMode("EDITAR"); setIsMenuOpen(true);
   };
 
@@ -122,42 +196,49 @@ export default function MapaScreen() {
   return (
     <div className="relative w-full h-screen overflow-hidden bg-gray-900">
       
-      {/* Botões Laterais Esquerdos */}
       <div className="absolute top-6 left-6 z-10 flex flex-col gap-3">
-        <button onClick={() => { setDrawerMode("REGISTRO"); setEspecie(""); setIsMenuOpen(true); }} className="bg-emerald-600 text-white w-14 h-14 rounded-full shadow-2xl flex items-center justify-center hover:bg-emerald-700 transition-all transform hover:scale-105">
+        <button onClick={() => { setDrawerMode("REGISTRO"); setEspecie(""); setNomeCientifico(""); setIsMenuOpen(true); }} className="bg-emerald-600 text-white w-14 h-14 rounded-full shadow-2xl flex items-center justify-center hover:bg-emerald-700 transition-all transform hover:scale-105">
           <Plus size={30} />
         </button>
-        <button onClick={buscarMinhaLocalizacao} title="Minha Localização GPS" className="bg-white text-blue-600 w-14 h-14 rounded-full shadow-2xl flex items-center justify-center hover:bg-gray-100 transition-all transform hover:scale-105">
+        <button onClick={buscarMinhaLocalizacao} className="bg-white text-blue-600 w-14 h-14 rounded-full shadow-2xl flex items-center justify-center hover:bg-gray-100 transition-all transform hover:scale-105">
           <LocateFixed size={26} />
         </button>
-        {/* Botão de Logout Discreto */}
-        <button onClick={handleLogout} title="Sair do Sistema" className="bg-white/80 text-gray-500 w-10 h-10 rounded-full shadow-lg flex items-center justify-center hover:bg-red-50 hover:text-red-600 transition-all mt-4 ml-2">
+        <button onClick={handleLogout} className="bg-white/80 text-gray-500 w-10 h-10 rounded-full shadow-lg flex items-center justify-center hover:bg-red-50 hover:text-red-600 transition-all mt-4 ml-2">
           <LogOut size={18} />
         </button>
       </div>
 
-      {/* Barra de Pesquisa Integrada */}
-      <div className="absolute top-6 left-1/2 transform -translate-x-1/2 z-10 w-10/12 max-w-2xl flex gap-3">
+      <div className="absolute top-6 left-1/2 transform -translate-x-1/2 z-10 w-11/12 max-w-4xl flex gap-3 items-center">
         <div className="relative flex-1 flex items-center">
           <input 
             type="text" 
-            placeholder="Pesquisar espécie (Ex: Mangueira)..." 
+            placeholder="Pesquisar por Nome Comum..." 
             value={termoPesquisa}
             onChange={(e) => setTermoPesquisa(e.target.value)}
             className="w-full pl-12 pr-4 py-4 bg-white rounded-xl shadow-2xl outline-none font-medium text-gray-700" 
           />
           <Search className="absolute left-4 text-emerald-600" size={24} />
         </div>
-        <div className="bg-white rounded-xl shadow-2xl flex items-center px-4 hidden md:flex">
-          <Filter size={20} className="text-gray-400 mr-2" />
-          <select value={filtroMapa} onChange={(e) => setFiltroMapa(e.target.value)} className="bg-transparent outline-none font-semibold text-gray-700 py-4 cursor-pointer">
-            <option value="Todos">Todas</option>
-            <option value="Bom">Saudáveis</option>
-            <option value="Regular">Regulares</option>
-            <option value="Ruim">Críticas</option>
-            <option value="Morta">Suprimidas</option>
-          </select>
+        
+        <div className="bg-white rounded-xl shadow-2xl flex items-center px-4 py-3 h-[56px]">
+          <CalendarIcon size={20} className="text-gray-400 mr-2" />
+          <input 
+            type="date" 
+            value={dataFiltro}
+            onChange={(e) => setDataFiltro(e.target.value)}
+            className="bg-transparent border-none outline-none font-semibold text-gray-700 cursor-pointer w-full"
+            title="Filtrar árvores com serviço nesta data"
+          />
         </div>
+
+        <button 
+          onClick={gerarRelatorioPDF}
+          title="Gerar Relatório em PDF da data selecionada"
+          className="bg-blue-600 text-white rounded-xl shadow-2xl px-5 h-[56px] flex items-center justify-center hover:bg-blue-700 transition-colors gap-2 font-bold"
+        >
+          <Download size={20} />
+          <span className="hidden md:inline">Relatório</span>
+        </button>
       </div>
 
       <GoogleMap mapContainerStyle={containerStyle} center={mapCenter} zoom={17} options={{ mapTypeId: "hybrid", disableDefaultUI: true, zoomControl: true, tilt: 45, draggableCursor: "crosshair" }} onClick={handleMapClick}>
@@ -172,10 +253,10 @@ export default function MapaScreen() {
                 <h3 className="font-bold text-lg text-emerald-800">{arvoreSelecionada.especie}</h3>
                 <div className="flex gap-2 text-gray-400">
                   <button onClick={abrirPainelEditar} className="hover:text-emerald-600"><Edit2 size={16} /></button>
-                  <button onClick={handleExcluirArvore} className="hover:text-red-600"><Trash2 size={16} /></button>
                 </div>
               </div>
-              <p className="text-sm text-gray-700 mb-1"><strong>Altura:</strong> {arvoreSelecionada.altura}m</p>
+              <p className="text-sm text-gray-700 italic mb-1">{arvoreSelecionada.nomeCientifico}</p>
+              <p className="text-sm text-gray-700 mb-1"><strong>Origem:</strong> {arvoreSelecionada.origem}</p>
               <p className="text-sm text-gray-700 mb-4"><strong>Condição:</strong> <span className={`ml-1 font-bold ${arvoreSelecionada.estadoSanitario === 'Morta' ? 'text-black' : ''}`}>{arvoreSelecionada.estadoSanitario}</span></p>
               <button onClick={() => router.push(`/dashboard?id=${arvoreSelecionada.id}`)} className="w-full bg-blue-600 text-white text-sm font-bold py-2 rounded shadow hover:bg-blue-700 transition-colors flex items-center gap-2 justify-center">
                 <History size={16} /> Prontuário / Serviços
@@ -186,21 +267,27 @@ export default function MapaScreen() {
         {novaLocalizacao && drawerMode === "REGISTRO" && isMenuOpen && (<Marker position={novaLocalizacao} icon={{ url: "http://maps.google.com/mapfiles/ms/icons/blue-dot.png" }} />)}
       </GoogleMap>
 
-      {/* Drawer */}
       <div className={`fixed top-0 right-0 h-full w-full md:w-[400px] bg-white shadow-2xl z-50 transform transition-transform duration-300 ease-in-out ${isMenuOpen ? "translate-x-0" : "translate-x-full"}`}>
-        <div className="p-6 h-full flex flex-col">
+        <div className="p-6 h-full flex flex-col overflow-y-auto">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold text-emerald-700">{drawerMode === "EDITAR" ? "Editar Registro" : "Novo Registro"}</h2>
             <button onClick={fecharMenu} className="text-gray-400 hover:text-gray-600"><X size={28} /></button>
           </div>
           <form onSubmit={handleSalvarArvore} className="flex-1 flex flex-col space-y-5">
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">Espécie / Nome Popular</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Nome Comum</label>
               <input type="text" value={especie} onChange={(e) => setEspecie(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none" required />
             </div>
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">Altura Estimada (metros)</label>
-              <input type="number" value={altura} onChange={(e) => setAltura(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none" required />
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Nome Científico</label>
+              <input type="text" value={nomeCientifico} onChange={(e) => setNomeCientifico(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none" required />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Origem</label>
+              <select value={origem} onChange={(e) => setOrigem(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none">
+                <option value="Nativa">Nativa</option>
+                <option value="Exótica">Exótica</option>
+              </select>
             </div>
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1">Condição Fitossanitária</label>
@@ -211,7 +298,7 @@ export default function MapaScreen() {
                 <option value="Morta">Morta (Suprimida)</option>
               </select>
             </div>
-            <div className="mt-auto pt-6">
+            <div className="mt-auto pt-6 pb-4">
               <button type="submit" disabled={loading} className="w-full bg-emerald-600 text-white font-bold py-4 rounded-lg hover:bg-emerald-700 transition-colors">
                 {loading ? "Salvando..." : "Salvar no Banco"}
               </button>

@@ -2,7 +2,6 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { GoogleMap, useJsApiLoader, Marker, InfoWindow } from "@react-google-maps/api";
-// ADICIONEI O Trash2 (Lixeira) NA LINHA ABAIXO:
 import { Search, Plus, X, Leaf, History, LocateFixed, LogOut, Calendar as CalendarIcon, Download, Edit2, Trash2 } from "lucide-react";
 import { collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc } from "firebase/firestore";
 import { signOut, onAuthStateChanged } from "firebase/auth";
@@ -36,7 +35,10 @@ export default function MapaScreen() {
   const [arvoreSelecionada, setArvoreSelecionada] = useState<any | null>(null);
   
   const [termoPesquisa, setTermoPesquisa] = useState("");
-  const [dataFiltro, setDataFiltro] = useState(""); 
+  
+  // NOVOS ESTADOS DO PERÍODO
+  const [dataInicio, setDataInicio] = useState(""); 
+  const [dataFim, setDataFim] = useState(""); 
 
   const [especie, setEspecie] = useState(""); 
   const [nomeCientifico, setNomeCientifico] = useState("");
@@ -63,53 +65,80 @@ export default function MapaScreen() {
     return () => unsubscribe();
   }, []);
 
+  // LÓGICA DE FILTRAGEM ATUALIZADA PARA O PERÍODO
   const arvoresFiltradas = arvores.filter(arvore => {
     const matchPesquisa = termoPesquisa === "" || arvore.especie?.toLowerCase().includes(termoPesquisa.toLowerCase());
     
     let matchData = true;
-    if (dataFiltro) {
-      const temServicoNaData = historicoGlobal.some(servico => {
+    if (dataInicio || dataFim) {
+      const temServicoNoPeriodo = historicoGlobal.some(servico => {
         if (!servico.dataExecucao || servico.arvoreId !== arvore.id) return false;
         
-        const dataServico = servico.dataExecucao.toDate();
-        const dia = String(dataServico.getDate()).padStart(2, '0');
-        const mes = String(dataServico.getMonth() + 1).padStart(2, '0');
-        const ano = dataServico.getFullYear();
-        const dataFormatada = `${ano}-${mes}-${dia}`;
+        const d = servico.dataExecucao.toDate();
+        const formatada = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
         
-        return dataFormatada === dataFiltro;
+        if (dataInicio && dataFim) {
+           return formatada >= dataInicio && formatada <= dataFim;
+        } else if (dataInicio) {
+           return formatada === dataInicio; // Se preencheu só o início, busca só aquele dia
+        } else if (dataFim) {
+           return formatada === dataFim; // Se preencheu só o fim, busca só aquele dia
+        }
+        return false;
       });
-      matchData = temServicoNaData;
+      matchData = temServicoNoPeriodo;
     }
 
     return matchPesquisa && matchData;
   });
 
+  // GERAÇÃO DO PDF ATUALIZADA
   const gerarRelatorioPDF = () => {
-    if (!dataFiltro) {
-      alert("Por favor, selecione uma data no filtro superior para gerar o relatório.");
+    if (!dataInicio && !dataFim) {
+      alert("Por favor, selecione ao menos uma data (De ou Até) no filtro superior para gerar o relatório.");
       return;
     }
 
-    const servicosDoDia = historicoGlobal.filter(servico => {
+    const servicosDoPeriodo = historicoGlobal.filter(servico => {
       if (!servico.dataExecucao) return false;
       const d = servico.dataExecucao.toDate();
       const formatada = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      return formatada === dataFiltro;
+      
+      if (dataInicio && dataFim) {
+         return formatada >= dataInicio && formatada <= dataFim;
+      } else if (dataInicio) {
+         return formatada === dataInicio;
+      } else if (dataFim) {
+         return formatada === dataFim;
+      }
+      return false;
     });
 
-    if (servicosDoDia.length === 0) {
-      alert("Nenhum serviço foi registrado na data selecionada.");
+    if (servicosDoPeriodo.length === 0) {
+      alert("Nenhum serviço foi registrado no período selecionado.");
       return;
     }
 
     const doc = new jsPDF('landscape'); 
     
-    const dataBr = dataFiltro.split('-').reverse().join('/');
-    doc.setFontSize(16);
-    doc.text(`Relatório de Execução de Serviços - Data: ${dataBr}`, 14, 15);
+    // Formatando o Título do PDF
+    let textoData = "";
+    if (dataInicio && dataFim) {
+        if (dataInicio === dataFim) {
+            textoData = dataInicio.split('-').reverse().join('/');
+        } else {
+            textoData = `${dataInicio.split('-').reverse().join('/')} a ${dataFim.split('-').reverse().join('/')}`;
+        }
+    } else if (dataInicio) {
+        textoData = dataInicio.split('-').reverse().join('/');
+    } else if (dataFim) {
+        textoData = dataFim.split('-').reverse().join('/');
+    }
 
-    const linhasTabela = servicosDoDia.map((servico, index) => {
+    doc.setFontSize(16);
+    doc.text(`Relatório de Execução de Serviços - Período: ${textoData}`, 14, 15);
+
+    const linhasTabela = servicosDoPeriodo.map((servico, index) => {
       const arvore = arvores.find(a => a.id === servico.arvoreId) || {};
       
       return [
@@ -137,7 +166,12 @@ export default function MapaScreen() {
       alternateRowStyles: { fillColor: [240, 253, 244] },
     });
 
-    doc.save(`Relatorio_Servicos_${dataFiltro}.pdf`);
+    // Nome do arquivo dinâmico
+    const nomeArquivo = dataInicio && dataFim && dataInicio !== dataFim 
+      ? `Relatorio_Servicos_${dataInicio}_a_${dataFim}.pdf` 
+      : `Relatorio_Servicos_${dataInicio || dataFim}.pdf`;
+
+    doc.save(nomeArquivo);
   };
 
   const getIconUrl = (estado: string) => {
@@ -147,14 +181,12 @@ export default function MapaScreen() {
     return "http://maps.google.com/mapfiles/ms/icons/green-dot.png";
   };
 
-// NOVA LÓGICA DO BOTÃO GPS (Com Alta Precisão Ativada)
   const buscarMinhaLocalizacao = () => {
     if (navigator.geolocation) {
-      // Adicionamos 'Configurações de Alta Precisão'
       const opcoesGPS = {
-        enableHighAccuracy: true, // Força o uso do satélite GPS do celular
-        timeout: 10000,           // Espera até 10 segundos para achar o sinal forte
-        maximumAge: 0             // Impede de usar a última localização salva no cache
+        enableHighAccuracy: true, 
+        timeout: 10000,           
+        maximumAge: 0             
       };
 
       navigator.geolocation.getCurrentPosition(
@@ -174,7 +206,7 @@ export default function MapaScreen() {
         (erro) => {
           alert("GPS indisponível. Erro: " + erro.message);
         },
-        opcoesGPS // <-- Passamos as regras restritas aqui
+        opcoesGPS
       );
     } else {
       alert("Seu navegador não suporta GPS.");
@@ -207,12 +239,9 @@ export default function MapaScreen() {
     } catch (error) { alert("Erro ao salvar."); } finally { setLoading(false); }
   };
 
-  // NOVA FUNÇÃO: Excluir a árvore do Banco de Dados
   const handleExcluirArvore = async () => {
     if (!arvoreSelecionada) return;
-    
     const confirmar = window.confirm(`Tem certeza que deseja excluir a árvore ${arvoreSelecionada.especie}? Esta ação não pode ser desfeita.`);
-    
     if (confirmar) {
       try {
         await deleteDoc(doc(db, "arvores", arvoreSelecionada.id));
@@ -251,32 +280,44 @@ export default function MapaScreen() {
         </button>
       </div>
 
-      <div className="absolute top-6 left-1/2 transform -translate-x-1/2 z-10 w-11/12 max-w-4xl flex gap-3 items-center">
-        <div className="relative flex-1 flex items-center">
+      <div className="absolute top-6 left-1/2 transform -translate-x-1/2 z-10 w-11/12 max-w-5xl flex gap-3 items-center">
+        <div className="relative flex-1 flex items-center hidden sm:flex">
           <input 
             type="text" 
-            placeholder="Pesquisar por Nome Comum..." 
+            placeholder="Pesquisar..." 
             value={termoPesquisa}
             onChange={(e) => setTermoPesquisa(e.target.value)}
-            className="w-full pl-12 pr-4 py-4 bg-white rounded-xl shadow-2xl outline-none font-medium text-gray-700" 
+            className="w-full pl-10 pr-4 py-3 bg-white rounded-xl shadow-2xl outline-none font-medium text-gray-700 h-[56px]" 
           />
-          <Search className="absolute left-4 text-emerald-600" size={24} />
+          <Search className="absolute left-3 text-emerald-600" size={20} />
         </div>
         
-        <div className="bg-white rounded-xl shadow-2xl flex items-center px-4 py-3 h-[56px]">
-          <CalendarIcon size={20} className="text-gray-400 mr-2" />
-          <input 
-            type="date" 
-            value={dataFiltro}
-            onChange={(e) => setDataFiltro(e.target.value)}
-            className="bg-transparent border-none outline-none font-semibold text-gray-700 cursor-pointer w-full"
-            title="Filtrar árvores com serviço nesta data"
-          />
+        {/* NOVA BARRA DE PERÍODO (DE / ATÉ) */}
+        <div className="bg-white rounded-xl shadow-2xl flex items-center px-3 py-2 h-[56px] space-x-2 flex-1 sm:flex-none justify-center">
+          <CalendarIcon size={20} className="text-emerald-600 hidden md:block mr-1" />
+          <div className="flex flex-col">
+            <span className="text-[10px] text-gray-500 font-bold uppercase leading-none mb-1">De</span>
+            <input 
+              type="date" 
+              value={dataInicio}
+              onChange={(e) => setDataInicio(e.target.value)}
+              className="bg-transparent border-none outline-none font-semibold text-gray-700 cursor-pointer text-sm w-[110px]"
+            />
+          </div>
+          <div className="flex flex-col border-l border-gray-200 pl-2">
+            <span className="text-[10px] text-gray-500 font-bold uppercase leading-none mb-1">Até</span>
+            <input 
+              type="date" 
+              value={dataFim}
+              onChange={(e) => setDataFim(e.target.value)}
+              className="bg-transparent border-none outline-none font-semibold text-gray-700 cursor-pointer text-sm w-[110px]"
+            />
+          </div>
         </div>
 
         <button 
           onClick={gerarRelatorioPDF}
-          title="Gerar Relatório em PDF da data selecionada"
+          title="Gerar Relatório em PDF do período"
           className="bg-blue-600 text-white rounded-xl shadow-2xl px-5 h-[56px] flex items-center justify-center hover:bg-blue-700 transition-colors gap-2 font-bold"
         >
           <Download size={20} />
@@ -296,7 +337,6 @@ export default function MapaScreen() {
                 <h3 className="font-bold text-lg text-emerald-800">{arvoreSelecionada.especie}</h3>
                 <div className="flex gap-3 text-gray-400">
                   <button onClick={abrirPainelEditar} title="Editar" className="hover:text-emerald-600"><Edit2 size={18} /></button>
-                  {/* BOTÃO DE EXCLUIR REINSERIDO AQUI: */}
                   <button onClick={handleExcluirArvore} title="Excluir" className="hover:text-red-600"><Trash2 size={18} /></button>
                 </div>
               </div>

@@ -2,8 +2,8 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { GoogleMap, useJsApiLoader, Marker, InfoWindow } from "@react-google-maps/api";
-// O Edit2 FOI ADICIONADO AQUI NESSA LINHA:
-import { Search, Plus, X, Leaf, History, LocateFixed, LogOut, Calendar as CalendarIcon, Download, Edit2 } from "lucide-react";
+// ADICIONEI O Trash2 (Lixeira) NA LINHA ABAIXO:
+import { Search, Plus, X, Leaf, History, LocateFixed, LogOut, Calendar as CalendarIcon, Download, Edit2, Trash2 } from "lucide-react";
 import { collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc } from "firebase/firestore";
 import { signOut, onAuthStateChanged } from "firebase/auth";
 import { db, auth } from "../firebase";
@@ -147,11 +147,29 @@ export default function MapaScreen() {
     return "http://maps.google.com/mapfiles/ms/icons/green-dot.png";
   };
 
+  // NOVA LÓGICA DO BOTÃO GPS (Pinça o local e já abre o formulário)
   const buscarMinhaLocalizacao = () => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
-        (position) => setMapCenter({ lat: position.coords.latitude, lng: position.coords.longitude }),
-        () => alert("GPS indisponível.")
+        (position) => {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+          
+          // Centraliza a câmera no usuário
+          setMapCenter({ lat, lng });
+          
+          // Marca o pino azul exato na posição dele
+          setNovaLocalizacao({ lat, lng });
+          setArvoreSelecionada(null);
+          
+          // Abre o menu lateral para preenchimento
+          setDrawerMode("REGISTRO");
+          setIsMenuOpen(true);
+          
+          // Limpa os campos antigos
+          setEspecie(""); setNomeCientifico(""); setOrigem("Nativa"); setEstadoSanitario("Bom");
+        },
+        () => alert("GPS indisponível. Verifique as permissões de localização do navegador.")
       );
     }
   };
@@ -182,6 +200,24 @@ export default function MapaScreen() {
     } catch (error) { alert("Erro ao salvar."); } finally { setLoading(false); }
   };
 
+  // NOVA FUNÇÃO: Excluir a árvore do Banco de Dados
+  const handleExcluirArvore = async () => {
+    if (!arvoreSelecionada) return;
+    
+    const confirmar = window.confirm(`Tem certeza que deseja excluir a árvore ${arvoreSelecionada.especie}? Esta ação não pode ser desfeita.`);
+    
+    if (confirmar) {
+      try {
+        await deleteDoc(doc(db, "arvores", arvoreSelecionada.id));
+        setArvoreSelecionada(null);
+        alert("Árvore excluída com sucesso.");
+      } catch (error) {
+        console.error("Erro ao excluir: ", error);
+        alert("Ocorreu um erro ao excluir a árvore.");
+      }
+    }
+  };
+
   const abrirPainelEditar = () => {
     if (!arvoreSelecionada) return;
     setEspecie(arvoreSelecionada.especie || ""); 
@@ -200,7 +236,7 @@ export default function MapaScreen() {
         <button onClick={() => { setDrawerMode("REGISTRO"); setEspecie(""); setNomeCientifico(""); setIsMenuOpen(true); }} className="bg-emerald-600 text-white w-14 h-14 rounded-full shadow-2xl flex items-center justify-center hover:bg-emerald-700 transition-all transform hover:scale-105">
           <Plus size={30} />
         </button>
-        <button onClick={buscarMinhaLocalizacao} className="bg-white text-blue-600 w-14 h-14 rounded-full shadow-2xl flex items-center justify-center hover:bg-gray-100 transition-all transform hover:scale-105">
+        <button onClick={buscarMinhaLocalizacao} title="Capturar GPS e Registrar" className="bg-white text-blue-600 w-14 h-14 rounded-full shadow-2xl flex items-center justify-center hover:bg-gray-100 transition-all transform hover:scale-105">
           <LocateFixed size={26} />
         </button>
         <button onClick={handleLogout} className="bg-white/80 text-gray-500 w-10 h-10 rounded-full shadow-lg flex items-center justify-center hover:bg-red-50 hover:text-red-600 transition-all mt-4 ml-2">
@@ -251,8 +287,10 @@ export default function MapaScreen() {
             <div className="p-2 min-w-[200px]">
               <div className="flex justify-between items-start border-b border-emerald-100 pb-1 mb-2">
                 <h3 className="font-bold text-lg text-emerald-800">{arvoreSelecionada.especie}</h3>
-                <div className="flex gap-2 text-gray-400">
-                  <button onClick={abrirPainelEditar} className="hover:text-emerald-600"><Edit2 size={16} /></button>
+                <div className="flex gap-3 text-gray-400">
+                  <button onClick={abrirPainelEditar} title="Editar" className="hover:text-emerald-600"><Edit2 size={18} /></button>
+                  {/* BOTÃO DE EXCLUIR REINSERIDO AQUI: */}
+                  <button onClick={handleExcluirArvore} title="Excluir" className="hover:text-red-600"><Trash2 size={18} /></button>
                 </div>
               </div>
               <p className="text-sm text-gray-700 italic mb-1">{arvoreSelecionada.nomeCientifico}</p>

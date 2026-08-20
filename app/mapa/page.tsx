@@ -147,30 +147,37 @@ export default function MapaScreen() {
     return "http://maps.google.com/mapfiles/ms/icons/green-dot.png";
   };
 
-  // NOVA LÓGICA DO BOTÃO GPS (Pinça o local e já abre o formulário)
+// NOVA LÓGICA DO BOTÃO GPS (Com Alta Precisão Ativada)
   const buscarMinhaLocalizacao = () => {
     if (navigator.geolocation) {
+      // Adicionamos 'Configurações de Alta Precisão'
+      const opcoesGPS = {
+        enableHighAccuracy: true, // Força o uso do satélite GPS do celular
+        timeout: 10000,           // Espera até 10 segundos para achar o sinal forte
+        maximumAge: 0             // Impede de usar a última localização salva no cache
+      };
+
       navigator.geolocation.getCurrentPosition(
         (position) => {
           const lat = position.coords.latitude;
           const lng = position.coords.longitude;
           
-          // Centraliza a câmera no usuário
           setMapCenter({ lat, lng });
-          
-          // Marca o pino azul exato na posição dele
           setNovaLocalizacao({ lat, lng });
           setArvoreSelecionada(null);
           
-          // Abre o menu lateral para preenchimento
           setDrawerMode("REGISTRO");
           setIsMenuOpen(true);
           
-          // Limpa os campos antigos
           setEspecie(""); setNomeCientifico(""); setOrigem("Nativa"); setEstadoSanitario("Bom");
         },
-        () => alert("GPS indisponível. Verifique as permissões de localização do navegador.")
+        (erro) => {
+          alert("GPS indisponível. Erro: " + erro.message);
+        },
+        opcoesGPS // <-- Passamos as regras restritas aqui
       );
+    } else {
+      alert("Seu navegador não suporta GPS.");
     }
   };
 

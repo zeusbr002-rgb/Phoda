@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { GoogleMap, useJsApiLoader, Marker, InfoWindow } from "@react-google-maps/api";
-import { Search, Plus, X, Leaf, History, LocateFixed, LogOut, Calendar as CalendarIcon, Download, Edit2, Trash2 } from "lucide-react";
+import { Search, Plus, X, Leaf, History, LocateFixed, LogOut, Calendar as CalendarIcon, Download, Edit2, Trash2, Camera } from "lucide-react";
 import { collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc } from "firebase/firestore";
 import { signOut, onAuthStateChanged } from "firebase/auth";
 import { db, auth } from "../firebase";
@@ -35,8 +35,6 @@ export default function MapaScreen() {
   const [arvoreSelecionada, setArvoreSelecionada] = useState<any | null>(null);
   
   const [termoPesquisa, setTermoPesquisa] = useState("");
-  
-  // NOVOS ESTADOS DO PERÍODO
   const [dataInicio, setDataInicio] = useState(""); 
   const [dataFim, setDataFim] = useState(""); 
 
@@ -44,10 +42,14 @@ export default function MapaScreen() {
   const [nomeCientifico, setNomeCientifico] = useState("");
   const [origem, setOrigem] = useState("Nativa");
   const [estadoSanitario, setEstadoSanitario] = useState("Bom");
+  
+  // ESTADOS DA FOTO (ImgBB)
+  const [fotoUrl, setFotoUrl] = useState("");
+  const [uploadingFoto, setUploadingFoto] = useState(false);
 
   const { isLoaded } = useJsApiLoader({
     id: "google-map-script",
-    // COLE A SUA CHAVE VERDADEIRA AQUI EMBAIXO:
+    // COLE A SUA CHAVE VERDADEIRA DO GOOGLE MAPS AQUI EMBAIXO:
     googleMapsApiKey: "AIzaSyBCjSPO0l2BDUCeNmBsWH05kIs21gJtGk4", 
   });
 
@@ -65,52 +67,38 @@ export default function MapaScreen() {
     return () => unsubscribe();
   }, []);
 
-  // LÓGICA DE FILTRAGEM ATUALIZADA PARA O PERÍODO
   const arvoresFiltradas = arvores.filter(arvore => {
     const matchPesquisa = termoPesquisa === "" || arvore.especie?.toLowerCase().includes(termoPesquisa.toLowerCase());
-    
     let matchData = true;
     if (dataInicio || dataFim) {
       const temServicoNoPeriodo = historicoGlobal.some(servico => {
         if (!servico.dataExecucao || servico.arvoreId !== arvore.id) return false;
-        
         const d = servico.dataExecucao.toDate();
         const formatada = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
         
-        if (dataInicio && dataFim) {
-           return formatada >= dataInicio && formatada <= dataFim;
-        } else if (dataInicio) {
-           return formatada === dataInicio; // Se preencheu só o início, busca só aquele dia
-        } else if (dataFim) {
-           return formatada === dataFim; // Se preencheu só o fim, busca só aquele dia
-        }
+        if (dataInicio && dataFim) return formatada >= dataInicio && formatada <= dataFim;
+        if (dataInicio) return formatada === dataInicio;
+        if (dataFim) return formatada === dataFim;
         return false;
       });
       matchData = temServicoNoPeriodo;
     }
-
     return matchPesquisa && matchData;
   });
 
-  // GERAÇÃO DO PDF ATUALIZADA
   const gerarRelatorioPDF = () => {
     if (!dataInicio && !dataFim) {
       alert("Por favor, selecione ao menos uma data (De ou Até) no filtro superior para gerar o relatório.");
       return;
     }
-
     const servicosDoPeriodo = historicoGlobal.filter(servico => {
       if (!servico.dataExecucao) return false;
       const d = servico.dataExecucao.toDate();
       const formatada = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       
-      if (dataInicio && dataFim) {
-         return formatada >= dataInicio && formatada <= dataFim;
-      } else if (dataInicio) {
-         return formatada === dataInicio;
-      } else if (dataFim) {
-         return formatada === dataFim;
-      }
+      if (dataInicio && dataFim) return formatada >= dataInicio && formatada <= dataFim;
+      if (dataInicio) return formatada === dataInicio;
+      if (dataFim) return formatada === dataFim;
       return false;
     });
 
@@ -120,15 +108,9 @@ export default function MapaScreen() {
     }
 
     const doc = new jsPDF('landscape'); 
-    
-    // Formatando o Título do PDF
     let textoData = "";
     if (dataInicio && dataFim) {
-        if (dataInicio === dataFim) {
-            textoData = dataInicio.split('-').reverse().join('/');
-        } else {
-            textoData = `${dataInicio.split('-').reverse().join('/')} a ${dataFim.split('-').reverse().join('/')}`;
-        }
+        textoData = dataInicio === dataFim ? dataInicio.split('-').reverse().join('/') : `${dataInicio.split('-').reverse().join('/')} a ${dataFim.split('-').reverse().join('/')}`;
     } else if (dataInicio) {
         textoData = dataInicio.split('-').reverse().join('/');
     } else if (dataFim) {
@@ -140,7 +122,6 @@ export default function MapaScreen() {
 
     const linhasTabela = servicosDoPeriodo.map((servico, index) => {
       const arvore = arvores.find(a => a.id === servico.arvoreId) || {};
-      
       return [
         index + 1,
         arvore.especie || "-",
@@ -166,11 +147,7 @@ export default function MapaScreen() {
       alternateRowStyles: { fillColor: [240, 253, 244] },
     });
 
-    // Nome do arquivo dinâmico
-    const nomeArquivo = dataInicio && dataFim && dataInicio !== dataFim 
-      ? `Relatorio_Servicos_${dataInicio}_a_${dataFim}.pdf` 
-      : `Relatorio_Servicos_${dataInicio || dataFim}.pdf`;
-
+    const nomeArquivo = dataInicio && dataFim && dataInicio !== dataFim ? `Relatorio_Servicos_${dataInicio}_a_${dataFim}.pdf` : `Relatorio_Servicos_${dataInicio || dataFim}.pdf`;
     doc.save(nomeArquivo);
   };
 
@@ -183,29 +160,19 @@ export default function MapaScreen() {
 
   const buscarMinhaLocalizacao = () => {
     if (navigator.geolocation) {
-      const opcoesGPS = {
-        enableHighAccuracy: true, 
-        timeout: 10000,           
-        maximumAge: 0             
-      };
-
+      const opcoesGPS = { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 };
       navigator.geolocation.getCurrentPosition(
         (position) => {
           const lat = position.coords.latitude;
           const lng = position.coords.longitude;
-          
           setMapCenter({ lat, lng });
           setNovaLocalizacao({ lat, lng });
           setArvoreSelecionada(null);
-          
           setDrawerMode("REGISTRO");
           setIsMenuOpen(true);
-          
-          setEspecie(""); setNomeCientifico(""); setOrigem("Nativa"); setEstadoSanitario("Bom");
+          resetarFormulario();
         },
-        (erro) => {
-          alert("GPS indisponível. Erro: " + erro.message);
-        },
+        (erro) => alert("GPS indisponível. Erro: " + erro.message),
         opcoesGPS
       );
     } else {
@@ -219,36 +186,67 @@ export default function MapaScreen() {
     if (e.latLng) {
       setNovaLocalizacao({ lat: e.latLng.lat(), lng: e.latLng.lng() });
       setArvoreSelecionada(null); setDrawerMode("REGISTRO"); setIsMenuOpen(true);
-      
-      setEspecie(""); setNomeCientifico(""); setOrigem("Nativa"); setEstadoSanitario("Bom");
+      resetarFormulario();
     }
   };
 
+  const resetarFormulario = () => {
+    setEspecie(""); setNomeCientifico(""); setOrigem("Nativa"); setEstadoSanitario("Bom"); setFotoUrl("");
+  };
+
   const fecharMenu = () => { setIsMenuOpen(false); setNovaLocalizacao(null); };
+
+  // FUNÇÃO QUE ENVIA A FOTO PARA O IMGBB
+  const handleFotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingFoto(true);
+    const formData = new FormData();
+    formData.append("image", file);
+
+    try {
+      // Chave do ImgBB integrada!
+      const res = await fetch("https://api.imgbb.com/1/upload?key=d13032e91594a9d0b158de4f6c5245b2", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      
+      if (data.success) {
+        setFotoUrl(data.data.url); // Salva o link no estado
+      } else {
+        alert("Erro ao enviar foto: " + data.error.message);
+      }
+    } catch (error) {
+      alert("Erro na conexão com o servidor de imagens.");
+    } finally {
+      setUploadingFoto(false);
+    }
+  };
 
   const handleSalvarArvore = async (e: React.FormEvent) => {
     e.preventDefault(); setLoading(true);
     try {
       if (drawerMode === "EDITAR" && arvoreSelecionada) {
-        await updateDoc(doc(db, "arvores", arvoreSelecionada.id), { especie, nomeCientifico, origem, estadoSanitario });
+        await updateDoc(doc(db, "arvores", arvoreSelecionada.id), { especie, nomeCientifico, origem, estadoSanitario, fotoUrl });
       } else {
-        await addDoc(collection(db, "arvores"), { especie, nomeCientifico, origem, estadoSanitario, dataRegistro: new Date(), localizacao: novaLocalizacao || unbCenter });
+        await addDoc(collection(db, "arvores"), { especie, nomeCientifico, origem, estadoSanitario, fotoUrl, dataRegistro: new Date(), localizacao: novaLocalizacao || unbCenter });
       }
-      setEspecie(""); setNomeCientifico(""); setOrigem("Nativa"); setEstadoSanitario("Bom"); 
+      resetarFormulario(); 
       setArvoreSelecionada(null); fecharMenu();
     } catch (error) { alert("Erro ao salvar."); } finally { setLoading(false); }
   };
 
   const handleExcluirArvore = async () => {
     if (!arvoreSelecionada) return;
-    const confirmar = window.confirm(`Tem certeza que deseja excluir a árvore ${arvoreSelecionada.especie}? Esta ação não pode ser desfeita.`);
+    const confirmar = window.confirm(`Tem certeza que deseja excluir a árvore ${arvoreSelecionada.especie}?`);
     if (confirmar) {
       try {
         await deleteDoc(doc(db, "arvores", arvoreSelecionada.id));
         setArvoreSelecionada(null);
         alert("Árvore excluída com sucesso.");
       } catch (error) {
-        console.error("Erro ao excluir: ", error);
         alert("Ocorreu um erro ao excluir a árvore.");
       }
     }
@@ -260,6 +258,7 @@ export default function MapaScreen() {
     setNomeCientifico(arvoreSelecionada.nomeCientifico || ""); 
     setOrigem(arvoreSelecionada.origem || "Nativa");
     setEstadoSanitario(arvoreSelecionada.estadoSanitario || "Bom");
+    setFotoUrl(arvoreSelecionada.fotoUrl || "");
     setDrawerMode("EDITAR"); setIsMenuOpen(true);
   };
 
@@ -269,7 +268,7 @@ export default function MapaScreen() {
     <div className="relative w-full h-screen overflow-hidden bg-gray-900">
       
       <div className="absolute top-6 left-6 z-10 flex flex-col gap-3">
-        <button onClick={() => { setDrawerMode("REGISTRO"); setEspecie(""); setNomeCientifico(""); setIsMenuOpen(true); }} className="bg-emerald-600 text-white w-14 h-14 rounded-full shadow-2xl flex items-center justify-center hover:bg-emerald-700 transition-all transform hover:scale-105">
+        <button onClick={() => { setDrawerMode("REGISTRO"); resetarFormulario(); setIsMenuOpen(true); }} className="bg-emerald-600 text-white w-14 h-14 rounded-full shadow-2xl flex items-center justify-center hover:bg-emerald-700 transition-all transform hover:scale-105">
           <Plus size={30} />
         </button>
         <button onClick={buscarMinhaLocalizacao} title="Capturar GPS e Registrar" className="bg-white text-blue-600 w-14 h-14 rounded-full shadow-2xl flex items-center justify-center hover:bg-gray-100 transition-all transform hover:scale-105">
@@ -282,44 +281,23 @@ export default function MapaScreen() {
 
       <div className="absolute top-6 left-1/2 transform -translate-x-1/2 z-10 w-11/12 max-w-5xl flex gap-3 items-center">
         <div className="relative flex-1 flex items-center hidden sm:flex">
-          <input 
-            type="text" 
-            placeholder="Pesquisar..." 
-            value={termoPesquisa}
-            onChange={(e) => setTermoPesquisa(e.target.value)}
-            className="w-full pl-10 pr-4 py-3 bg-white rounded-xl shadow-2xl outline-none font-medium text-gray-700 h-[56px]" 
-          />
+          <input type="text" placeholder="Pesquisar..." value={termoPesquisa} onChange={(e) => setTermoPesquisa(e.target.value)} className="w-full pl-10 pr-4 py-3 bg-white rounded-xl shadow-2xl outline-none font-medium text-gray-700 h-[56px]" />
           <Search className="absolute left-3 text-emerald-600" size={20} />
         </div>
         
-        {/* NOVA BARRA DE PERÍODO (DE / ATÉ) */}
         <div className="bg-white rounded-xl shadow-2xl flex items-center px-3 py-2 h-[56px] space-x-2 flex-1 sm:flex-none justify-center">
           <CalendarIcon size={20} className="text-emerald-600 hidden md:block mr-1" />
           <div className="flex flex-col">
             <span className="text-[10px] text-gray-500 font-bold uppercase leading-none mb-1">De</span>
-            <input 
-              type="date" 
-              value={dataInicio}
-              onChange={(e) => setDataInicio(e.target.value)}
-              className="bg-transparent border-none outline-none font-semibold text-gray-700 cursor-pointer text-sm w-[110px]"
-            />
+            <input type="date" value={dataInicio} onChange={(e) => setDataInicio(e.target.value)} className="bg-transparent border-none outline-none font-semibold text-gray-700 cursor-pointer text-sm w-[110px]" />
           </div>
           <div className="flex flex-col border-l border-gray-200 pl-2">
             <span className="text-[10px] text-gray-500 font-bold uppercase leading-none mb-1">Até</span>
-            <input 
-              type="date" 
-              value={dataFim}
-              onChange={(e) => setDataFim(e.target.value)}
-              className="bg-transparent border-none outline-none font-semibold text-gray-700 cursor-pointer text-sm w-[110px]"
-            />
+            <input type="date" value={dataFim} onChange={(e) => setDataFim(e.target.value)} className="bg-transparent border-none outline-none font-semibold text-gray-700 cursor-pointer text-sm w-[110px]" />
           </div>
         </div>
 
-        <button 
-          onClick={gerarRelatorioPDF}
-          title="Gerar Relatório em PDF do período"
-          className="bg-blue-600 text-white rounded-xl shadow-2xl px-5 h-[56px] flex items-center justify-center hover:bg-blue-700 transition-colors gap-2 font-bold"
-        >
+        <button onClick={gerarRelatorioPDF} title="Gerar Relatório em PDF do período" className="bg-blue-600 text-white rounded-xl shadow-2xl px-5 h-[56px] flex items-center justify-center hover:bg-blue-700 transition-colors gap-2 font-bold">
           <Download size={20} />
           <span className="hidden md:inline">Relatório</span>
         </button>
@@ -333,6 +311,11 @@ export default function MapaScreen() {
         {arvoreSelecionada && (
           <InfoWindow position={arvoreSelecionada.localizacao} onCloseClick={() => setArvoreSelecionada(null)}>
             <div className="p-2 min-w-[200px]">
+              {arvoreSelecionada.fotoUrl && (
+                <div className="mb-3 w-full h-28 bg-gray-100 rounded-lg overflow-hidden border border-gray-200">
+                  <img src={arvoreSelecionada.fotoUrl} alt="Foto da árvore" className="w-full h-full object-cover" />
+                </div>
+              )}
               <div className="flex justify-between items-start border-b border-emerald-100 pb-1 mb-2">
                 <h3 className="font-bold text-lg text-emerald-800">{arvoreSelecionada.especie}</h3>
                 <div className="flex gap-3 text-gray-400">
@@ -359,6 +342,25 @@ export default function MapaScreen() {
             <button onClick={fecharMenu} className="text-gray-400 hover:text-gray-600"><X size={28} /></button>
           </div>
           <form onSubmit={handleSalvarArvore} className="flex-1 flex flex-col space-y-5">
+            
+            {/* BOTÃO DA CÂMERA AQUI */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Foto da Árvore (Opcional)</label>
+              <label className={`w-full flex items-center justify-center gap-2 p-3 rounded-lg border-2 border-dashed cursor-pointer transition-colors ${fotoUrl ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}>
+                {uploadingFoto ? (
+                  <span className="font-medium text-sm text-gray-600">Enviando imagem...</span>
+                ) : fotoUrl ? (
+                  <span className="font-bold text-sm">✓ Foto Anexada (Clique para trocar)</span>
+                ) : (
+                  <>
+                    <Camera size={20} />
+                    <span className="font-medium text-sm">Abrir Câmera / Galeria</span>
+                  </>
+                )}
+                <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFotoUpload} disabled={uploadingFoto} />
+              </label>
+            </div>
+
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1">Nome Comum</label>
               <input type="text" value={especie} onChange={(e) => setEspecie(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none" required />
@@ -384,7 +386,7 @@ export default function MapaScreen() {
               </select>
             </div>
             <div className="mt-auto pt-6 pb-4">
-              <button type="submit" disabled={loading} className="w-full bg-emerald-600 text-white font-bold py-4 rounded-lg hover:bg-emerald-700 transition-colors">
+              <button type="submit" disabled={loading || uploadingFoto} className="w-full bg-emerald-600 text-white font-bold py-4 rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50">
                 {loading ? "Salvando..." : "Salvar no Banco"}
               </button>
             </div>

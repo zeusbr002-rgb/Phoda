@@ -3,7 +3,8 @@ import React, { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { collection, onSnapshot, doc, getDoc, addDoc, query, where, updateDoc } from "firebase/firestore";
 import { db } from "../firebase";
-import { ArrowLeft, Plus, Leaf, ClipboardCheck, Calendar, Skull } from "lucide-react";
+// ADICIONEI O ÍCONE 'Camera' AQUI:
+import { ArrowLeft, Plus, Leaf, ClipboardCheck, Calendar, Skull, Camera } from "lucide-react";
 
 const listaConflitos = [
   "Vias", "Estacionamento", "Prédios", "Calçadas", 
@@ -28,6 +29,12 @@ function HistoricoContent() {
   const [equipe, setEquipe] = useState("");
   const [equipamentos, setEquipamentos] = useState("");
   const [detalhes, setDetalhes] = useState("");
+
+  // NOVOS ESTADOS PARA AS FOTOS ANTES E DEPOIS
+  const [fotoAntes, setFotoAntes] = useState("");
+  const [fotoDepois, setFotoDepois] = useState("");
+  const [uploadingAntes, setUploadingAntes] = useState(false);
+  const [uploadingDepois, setUploadingDepois] = useState(false);
 
   useEffect(() => {
     if (!arvoreId) return;
@@ -58,6 +65,38 @@ function HistoricoContent() {
     }
   };
 
+  // FUNÇÃO DE UPLOAD (Reutiliza a mesma chave do ImgBB)
+  const handleFotoUpload = async (e: React.ChangeEvent<HTMLInputElement>, tipo: 'antes' | 'depois') => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (tipo === 'antes') setUploadingAntes(true);
+    else setUploadingDepois(true);
+
+    const formData = new FormData();
+    formData.append("image", file);
+
+    try {
+      const res = await fetch("https://api.imgbb.com/1/upload?key=d13032e91594a9d0b158de4f6c5245b2", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      
+      if (data.success) {
+        if (tipo === 'antes') setFotoAntes(data.data.url);
+        else setFotoDepois(data.data.url);
+      } else {
+        alert("Erro ao enviar foto: " + data.error.message);
+      }
+    } catch (error) {
+      alert("Erro na conexão com o servidor de imagens.");
+    } finally {
+      if (tipo === 'antes') setUploadingAntes(false);
+      else setUploadingDepois(false);
+    }
+  };
+
   const handleSalvarServico = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -74,6 +113,8 @@ function HistoricoContent() {
         equipe,
         equipamentos,
         detalhes,
+        fotoAntes,   // SALVANDO A FOTO ANTES
+        fotoDepois,  // SALVANDO A FOTO DEPOIS
         dataExecucao: new Date()
       });
 
@@ -88,6 +129,7 @@ function HistoricoContent() {
       setObjetivoPoda(""); setTipoPoda(""); setMotivoQueda(""); setDap(""); 
       setConflitos([]); setEquipe(""); setEquipamentos(""); 
       setDetalhes(""); setTipoServico("Poda");
+      setFotoAntes(""); setFotoDepois(""); // LIMPANDO FOTOS APÓS SALVAR
 
     } catch (error) {
       console.error(error);
@@ -102,18 +144,24 @@ function HistoricoContent() {
   return (
     <div className="min-h-screen bg-emerald-50 p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
-        <header className="flex items-center gap-4 mb-8">
-          <button onClick={() => router.push('/mapa')} className="bg-white p-3 rounded-full shadow hover:bg-gray-50 text-emerald-700">
+        <header className="flex items-start gap-4 mb-8">
+          <button onClick={() => router.push('/mapa')} className="bg-white p-3 rounded-full shadow hover:bg-gray-50 text-emerald-700 mt-1">
             <ArrowLeft size={24} />
           </button>
-          <div>
+          <div className="flex-1">
             <h1 className="text-2xl font-extrabold text-emerald-900 flex items-center gap-2">
               {arvore.estadoSanitario === "Morta" ? <Skull className="text-gray-800"/> : <Leaf className="text-emerald-600"/>} 
               Prontuário: {arvore.especie}
             </h1>
-            <p className="text-emerald-700 font-medium">
+            <p className="text-emerald-700 font-medium mb-3">
               Condição: <span className={`font-bold ${arvore.estadoSanitario === "Morta" ? "text-red-600" : ""}`}>{arvore.estadoSanitario}</span>
             </p>
+            {/* EXIBE A FOTO ORIGINAL DA ÁRVORE (SE EXISTIR) */}
+            {arvore.fotoUrl && (
+              <div className="w-full md:w-64 h-40 bg-gray-200 rounded-xl overflow-hidden border-2 border-emerald-100 shadow-sm">
+                <img src={arvore.fotoUrl} alt={`Foto de ${arvore.especie}`} className="w-full h-full object-cover" />
+              </div>
+            )}
           </div>
         </header>
 
@@ -221,14 +269,51 @@ function HistoricoContent() {
                 <textarea value={detalhes} onChange={(e) => setDetalhes(e.target.value)} placeholder="Informações adicionais da execução..." className="w-full p-3 h-20 bg-gray-50 border border-gray-200 rounded-lg outline-none resize-none"/>
               </div>
 
-              <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl hover:bg-blue-700 transition-all shadow-lg hover:shadow-xl text-lg mt-2">
+              {/* SEÇÃO DE FOTOS (ANTES E DEPOIS) */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-gray-100 pt-4">
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">Foto: ANTES do Serviço</label>
+                  <label className={`w-full flex flex-col items-center justify-center gap-2 p-3 h-28 rounded-lg border-2 border-dashed cursor-pointer transition-colors ${fotoAntes ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}>
+                    {uploadingAntes ? (
+                      <span className="font-medium text-sm text-gray-600">Enviando imagem...</span>
+                    ) : fotoAntes ? (
+                      <span className="font-bold text-sm text-center">✓ Antes Anexado<br/><span className="text-xs font-normal opacity-70">(Clique para trocar)</span></span>
+                    ) : (
+                      <>
+                        <Camera size={28} />
+                        <span className="font-medium text-sm text-center">Tirar Foto do Antes</span>
+                      </>
+                    )}
+                    <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => handleFotoUpload(e, 'antes')} disabled={uploadingAntes || uploadingDepois} />
+                  </label>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">Foto: DEPOIS do Serviço</label>
+                  <label className={`w-full flex flex-col items-center justify-center gap-2 p-3 h-28 rounded-lg border-2 border-dashed cursor-pointer transition-colors ${fotoDepois ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}>
+                    {uploadingDepois ? (
+                      <span className="font-medium text-sm text-gray-600">Enviando imagem...</span>
+                    ) : fotoDepois ? (
+                      <span className="font-bold text-sm text-center">✓ Depois Anexado<br/><span className="text-xs font-normal opacity-70">(Clique para trocar)</span></span>
+                    ) : (
+                      <>
+                        <Camera size={28} />
+                        <span className="font-medium text-sm text-center">Tirar Foto do Depois</span>
+                      </>
+                    )}
+                    <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => handleFotoUpload(e, 'depois')} disabled={uploadingAntes || uploadingDepois} />
+                  </label>
+                </div>
+              </div>
+
+              <button type="submit" disabled={loading || uploadingAntes || uploadingDepois} className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl hover:bg-blue-700 transition-all shadow-lg hover:shadow-xl text-lg mt-2 disabled:opacity-50">
                 {loading ? "Registrando..." : "Confirmar e Salvar Histórico"}
               </button>
             </form>
           </div>
 
           <div className="lg:col-span-5 bg-white p-6 rounded-2xl shadow-lg border-t-4 border-emerald-500 h-fit max-h-[85vh] overflow-y-auto">
-            <h2 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2 sticky top-0 bg-white pb-2 border-b border-gray-100">
+            <h2 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2 sticky top-0 bg-white pb-2 border-b border-gray-100 z-10">
               <ClipboardCheck size={24} className="text-emerald-500"/> Histórico de Intervenções
             </h2>
             
@@ -267,6 +352,25 @@ function HistoricoContent() {
                     )}
                     
                     {servico.detalhes && <p className="text-sm text-gray-600 mt-2 bg-white p-2 rounded border border-gray-100 italic">"{servico.detalhes}"</p>}
+
+                    {/* GALERIA DE FOTOS ANTES E DEPOIS NO HISTÓRICO */}
+                    {(servico.fotoAntes || servico.fotoDepois) && (
+                      <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-gray-200">
+                        {servico.fotoAntes && (
+                          <div className="flex flex-col gap-1">
+                            <span className="text-[10px] font-extrabold text-gray-500 uppercase tracking-wider text-center">Antes</span>
+                            <img src={servico.fotoAntes} alt="Foto do Antes" className="w-full h-28 object-cover rounded shadow-sm border border-gray-300" />
+                          </div>
+                        )}
+                        {servico.fotoDepois && (
+                          <div className="flex flex-col gap-1">
+                            <span className="text-[10px] font-extrabold text-gray-500 uppercase tracking-wider text-center">Depois</span>
+                            <img src={servico.fotoDepois} alt="Foto do Depois" className="w-full h-28 object-cover rounded shadow-sm border border-gray-300" />
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                   </div>
                 ))
               )}

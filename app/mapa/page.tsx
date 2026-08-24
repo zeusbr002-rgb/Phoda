@@ -42,14 +42,15 @@ export default function MapaScreen() {
   const [nomeCientifico, setNomeCientifico] = useState("");
   const [origem, setOrigem] = useState("Nativa");
   const [estadoSanitario, setEstadoSanitario] = useState("Bom");
+  // NOVO ESTADO DO SETOR
+  const [setor, setSetor] = useState("");
   
-  // ESTADOS DA FOTO (ImgBB)
   const [fotoUrl, setFotoUrl] = useState("");
   const [uploadingFoto, setUploadingFoto] = useState(false);
 
   const { isLoaded } = useJsApiLoader({
     id: "google-map-script",
-    // COLE A SUA CHAVE VERDADEIRA DO GOOGLE MAPS AQUI EMBAIXO:
+    // COLE A SUA CHAVE VERDADEIRA AQUI EMBAIXO:
     googleMapsApiKey: "AIzaSyBCjSPO0l2BDUCeNmBsWH05kIs21gJtGk4", 
   });
 
@@ -120,10 +121,12 @@ export default function MapaScreen() {
     doc.setFontSize(16);
     doc.text(`Relatório de Execução de Serviços - Período: ${textoData}`, 14, 15);
 
+    // ATUALIZANDO AS COLUNAS COM O SETOR
     const linhasTabela = servicosDoPeriodo.map((servico, index) => {
       const arvore = arvores.find(a => a.id === servico.arvoreId) || {};
       return [
         index + 1,
+        arvore.setor || "-",           // COLUNA NOVA: Setor
         arvore.especie || "-",
         arvore.nomeCientifico || "-",
         arvore.origem || "-",
@@ -139,10 +142,10 @@ export default function MapaScreen() {
     });
 
     autoTable(doc, {
-      head: [['Ponto', 'Nome comum', 'Nome Científico', 'Origem', 'Serviço', 'Objetivo', 'Tipo de Poda', 'Conflito', 'DAP', 'Motivo detalhado', 'Latitude', 'Longitude']],
+      head: [['Ponto', 'Setor', 'Nome comum', 'Nome Científico', 'Origem', 'Serviço', 'Objetivo', 'Tipo Poda', 'Conflito', 'DAP', 'Motivo detalhado', 'Latitude', 'Longitude']],
       body: linhasTabela,
       startY: 22,
-      styles: { fontSize: 8, cellPadding: 2 },
+      styles: { fontSize: 7, cellPadding: 2 },
       headStyles: { fillColor: [5, 150, 105], textColor: 255, fontStyle: 'bold' },
       alternateRowStyles: { fillColor: [240, 253, 244] },
     });
@@ -191,30 +194,26 @@ export default function MapaScreen() {
   };
 
   const resetarFormulario = () => {
-    setEspecie(""); setNomeCientifico(""); setOrigem("Nativa"); setEstadoSanitario("Bom"); setFotoUrl("");
+    // ZERANDO O SETOR TAMBÉM
+    setEspecie(""); setNomeCientifico(""); setOrigem("Nativa"); setEstadoSanitario("Bom"); setSetor(""); setFotoUrl("");
   };
 
   const fecharMenu = () => { setIsMenuOpen(false); setNovaLocalizacao(null); };
 
-  // FUNÇÃO QUE ENVIA A FOTO PARA O IMGBB
   const handleFotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     setUploadingFoto(true);
     const formData = new FormData();
     formData.append("image", file);
-
     try {
-      // Chave do ImgBB integrada!
       const res = await fetch("https://api.imgbb.com/1/upload?key=d13032e91594a9d0b158de4f6c5245b2", {
         method: "POST",
         body: formData,
       });
       const data = await res.json();
-      
       if (data.success) {
-        setFotoUrl(data.data.url); // Salva o link no estado
+        setFotoUrl(data.data.url);
       } else {
         alert("Erro ao enviar foto: " + data.error.message);
       }
@@ -229,9 +228,11 @@ export default function MapaScreen() {
     e.preventDefault(); setLoading(true);
     try {
       if (drawerMode === "EDITAR" && arvoreSelecionada) {
-        await updateDoc(doc(db, "arvores", arvoreSelecionada.id), { especie, nomeCientifico, origem, estadoSanitario, fotoUrl });
+        // ATUALIZANDO COM O SETOR
+        await updateDoc(doc(db, "arvores", arvoreSelecionada.id), { especie, nomeCientifico, origem, estadoSanitario, setor, fotoUrl });
       } else {
-        await addDoc(collection(db, "arvores"), { especie, nomeCientifico, origem, estadoSanitario, fotoUrl, dataRegistro: new Date(), localizacao: novaLocalizacao || unbCenter });
+        // SALVANDO NOVO COM O SETOR
+        await addDoc(collection(db, "arvores"), { especie, nomeCientifico, origem, estadoSanitario, setor, fotoUrl, dataRegistro: new Date(), localizacao: novaLocalizacao || unbCenter });
       }
       resetarFormulario(); 
       setArvoreSelecionada(null); fecharMenu();
@@ -258,6 +259,7 @@ export default function MapaScreen() {
     setNomeCientifico(arvoreSelecionada.nomeCientifico || ""); 
     setOrigem(arvoreSelecionada.origem || "Nativa");
     setEstadoSanitario(arvoreSelecionada.estadoSanitario || "Bom");
+    setSetor(arvoreSelecionada.setor || ""); // PUXANDO O SETOR NA EDIÇÃO
     setFotoUrl(arvoreSelecionada.fotoUrl || "");
     setDrawerMode("EDITAR"); setIsMenuOpen(true);
   };
@@ -324,6 +326,12 @@ export default function MapaScreen() {
                 </div>
               </div>
               <p className="text-sm text-gray-700 italic mb-1">{arvoreSelecionada.nomeCientifico}</p>
+              
+              {/* EXIBINDO O SETOR NO MAPA */}
+              {arvoreSelecionada.setor && (
+                <p className="text-sm text-gray-700 mb-1"><strong>Setor:</strong> {arvoreSelecionada.setor}</p>
+              )}
+              
               <p className="text-sm text-gray-700 mb-1"><strong>Origem:</strong> {arvoreSelecionada.origem}</p>
               <p className="text-sm text-gray-700 mb-4"><strong>Condição:</strong> <span className={`ml-1 font-bold ${arvoreSelecionada.estadoSanitario === 'Morta' ? 'text-black' : ''}`}>{arvoreSelecionada.estadoSanitario}</span></p>
               <button onClick={() => router.push(`/dashboard?id=${arvoreSelecionada.id}`)} className="w-full bg-blue-600 text-white text-sm font-bold py-2 rounded shadow hover:bg-blue-700 transition-colors flex items-center gap-2 justify-center">
@@ -343,7 +351,6 @@ export default function MapaScreen() {
           </div>
           <form onSubmit={handleSalvarArvore} className="flex-1 flex flex-col space-y-5">
             
-            {/* BOTÃO DA CÂMERA AQUI */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1">Foto da Árvore (Opcional)</label>
               <label className={`w-full flex items-center justify-center gap-2 p-3 rounded-lg border-2 border-dashed cursor-pointer transition-colors ${fotoUrl ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}>
@@ -359,6 +366,12 @@ export default function MapaScreen() {
                 )}
                 <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFotoUpload} disabled={uploadingFoto} />
               </label>
+            </div>
+            
+            {/* NOVO CAMPO: QUAL É O SETOR */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Qual é o setor?</label>
+              <input type="text" value={setor} onChange={(e) => setSetor(e.target.value)} placeholder="Ex: ICC Norte, Reitoria..." className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none" required />
             </div>
 
             <div>

@@ -161,13 +161,26 @@ export default function MapaScreen() {
     return "http://maps.google.com/mapfiles/ms/icons/green-dot.png";
   };
 
-  const buscarMinhaLocalizacao = () => {
+const buscarMinhaLocalizacao = () => {
     if (navigator.geolocation) {
-      const opcoesGPS = { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 };
+      // 1. Aumentamos o tempo limite para 20 segundos para dar tempo do chip "esquentar" e achar o satélite
+      const opcoesGPS = { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 };
+
       navigator.geolocation.getCurrentPosition(
         (position) => {
           const lat = position.coords.latitude;
           const lng = position.coords.longitude;
+          
+          // 2. Lemos a margem de erro (em metros) que o celular está reportando
+          const precisao = position.coords.accuracy;
+
+          // 3. Se a margem de erro for maior que 25 metros, recusamos a marcação!
+          if (precisao > 25) {
+            alert(`Sinal de satélite fraco no momento.\nA margem de erro do celular está em ${Math.round(precisao)} metros.\n\nAguarde 5 segundos com o aplicativo aberto e clique no botão de localização novamente para "forçar" o GPS.`);
+            return; // Interrompe a função aqui para não marcar a árvore no lugar errado
+          }
+
+          // Se a precisão estiver boa (satélite conectado), segue o fluxo normal
           setMapCenter({ lat, lng });
           setNovaLocalizacao({ lat, lng });
           setArvoreSelecionada(null);
@@ -175,7 +188,14 @@ export default function MapaScreen() {
           setIsMenuOpen(true);
           resetarFormulario();
         },
-        (erro) => alert("GPS indisponível. Erro: " + erro.message),
+        (erro) => {
+          // Erro comum por tempo limite de busca (o timeout)
+          if (erro.code === 3) {
+            alert("O GPS demorou muito para responder. Tente clicar novamente.");
+          } else {
+            alert("GPS indisponível. Erro: " + erro.message);
+          }
+        },
         opcoesGPS
       );
     } else {

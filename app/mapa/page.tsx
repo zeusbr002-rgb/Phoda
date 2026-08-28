@@ -14,6 +14,9 @@ const containerStyle = { width: "100vw", height: "100vh" };
 const unbCenter = { lat: -15.7624, lng: -47.8664 };
 const iconMorta = 'data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2236%22%20viewBox%3D%220%200%2024%2036%22%3E%3Cpath%20fill%3D%22%23000000%22%20stroke%3D%22%23FFFFFF%22%20stroke-width%3D%222%22%20d%3D%22M12%200C5.373%200%200%205.373%200%2012c0%208.542%2012%2024%2012%2024s12-15.458%2012-24c0-6.627-5.373-12-12-12z%22%2F%3E%3Ccircle%20fill%3D%22%23FFFFFF%22%20cx%3D%2212%22%20cy%3D%2212%22%20r%3D%224%22%2F%3E%3C%2Fsvg%3E';
 
+// Ícone dinâmico azul (Estilo Radar do Google Maps)
+const iconUsuario = 'data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%3E%3Ccircle%20cx%3D%2216%22%20cy%3D%2216%22%20r%3D%2212%22%20fill%3D%22%234285F4%22%20opacity%3D%220.3%22%2F%3E%3Ccircle%20cx%3D%2216%22%20cy%3D%2216%22%20r%3D%226%22%20fill%3D%22%234285F4%22%20stroke%3D%22%23FFFFFF%22%20stroke-width%3D%222%22%2F%3E%3C%2Fsvg%3E';
+
 export default function MapaScreen() {
   const router = useRouter();
   
@@ -34,6 +37,10 @@ export default function MapaScreen() {
   const [novaLocalizacao, setNovaLocalizacao] = useState<{lat: number, lng: number} | null>(null);
   const [arvoreSelecionada, setArvoreSelecionada] = useState<any | null>(null);
   
+  // ESTADOS DO NOVO RASTREAMENTO CONTÍNUO
+  const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
+  const [mapaInicializado, setMapaInicializado] = useState(false);
+
   const [termoPesquisa, setTermoPesquisa] = useState("");
   const [dataInicio, setDataInicio] = useState(""); 
   const [dataFim, setDataFim] = useState(""); 
@@ -51,6 +58,35 @@ export default function MapaScreen() {
     id: "google-map-script",
     googleMapsApiKey: "AIzaSyBCjSPO0l2BDUCeNmBsWH05kIs21gJtGk4", 
   });
+
+  // EFEITO DE RASTREAMENTO (Fica monitorando os passos da pessoa)
+  useEffect(() => {
+    if (navigator.geolocation) {
+      const watchId = navigator.geolocation.watchPosition(
+        (position) => {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+          const precisao = position.coords.accuracy;
+
+          // Atualiza a bolinha azul se a precisão estiver razoável
+          if (precisao <= 40) {
+            setUserLocation({ lat, lng });
+
+            // Se for a primeira vez que acha o sinal, joga a câmera para a pessoa
+            if (!mapaInicializado) {
+              setMapCenter({ lat, lng });
+              setMapaInicializado(true);
+            }
+          }
+        },
+        (erro) => console.log("Aguardando sinal GPS...", erro),
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
+      );
+
+      // Limpa o rastreador ao fechar o app
+      return () => navigator.geolocation.clearWatch(watchId);
+    }
+  }, [mapaInicializado]);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, "arvores"), (snapshot) => {
@@ -87,14 +123,13 @@ export default function MapaScreen() {
 
   const gerarRelatorioPDF = () => {
     if (!dataInicio && !dataFim) {
-      alert("Por favor, selecione ao menos uma data (De ou Até) no filtro superior para gerar o relatório.");
+      alert("Por favor, selecione ao menos uma data no filtro superior para gerar o relatório.");
       return;
     }
     const servicosDoPeriodo = historicoGlobal.filter(servico => {
       if (!servico.dataExecucao) return false;
       const d = servico.dataExecucao.toDate();
       const formatada = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      
       if (dataInicio && dataFim) return formatada >= dataInicio && formatada <= dataFim;
       if (dataInicio) return formatada === dataInicio;
       if (dataFim) return formatada === dataFim;
@@ -107,48 +142,22 @@ export default function MapaScreen() {
     }
 
     const doc = new jsPDF('landscape'); 
-    let textoData = "";
-    if (dataInicio && dataFim) {
-        textoData = dataInicio === dataFim ? dataInicio.split('-').reverse().join('/') : `${dataInicio.split('-').reverse().join('/')} a ${dataFim.split('-').reverse().join('/')}`;
-    } else if (dataInicio) {
-        textoData = dataInicio.split('-').reverse().join('/');
-    } else if (dataFim) {
-        textoData = dataFim.split('-').reverse().join('/');
-    }
-
+    let textoData = dataInicio && dataFim && dataInicio !== dataFim ? `${dataInicio.split('-').reverse().join('/')} a ${dataFim.split('-').reverse().join('/')}` : (dataInicio || dataFim).split('-').reverse().join('/');
     doc.setFontSize(16);
     doc.text(`Relatório de Execução de Serviços - Período: ${textoData}`, 14, 15);
 
     const linhasTabela = servicosDoPeriodo.map((servico, index) => {
       const arvore = arvores.find(a => a.id === servico.arvoreId) || {};
       return [
-        index + 1,
-        arvore.setor || "-",
-        arvore.especie || "-",
-        arvore.nomeCientifico || "-",
-        arvore.origem || "-",
-        servico.tipoServico || "-",
-        servico.objetivoPoda || "-",
-        servico.tipoPoda || "-",
-        (servico.conflitos || []).join(", ") || "-",
-        servico.dap || "-",
-        servico.detalhes || servico.motivoQueda || "-",
-        arvore.localizacao?.lat?.toFixed(6) || "-",
-        arvore.localizacao?.lng?.toFixed(6) || "-"
+        index + 1, arvore.setor || "-", arvore.especie || "-", arvore.nomeCientifico || "-", arvore.origem || "-",
+        servico.tipoServico || "-", servico.objetivoPoda || "-", servico.tipoPoda || "-",
+        (servico.conflitos || []).join(", ") || "-", servico.dap || "-", servico.detalhes || servico.motivoQueda || "-",
+        arvore.localizacao?.lat?.toFixed(6) || "-", arvore.localizacao?.lng?.toFixed(6) || "-"
       ];
     });
 
-    autoTable(doc, {
-      head: [['Ponto', 'Setor', 'Nome comum', 'Nome Científico', 'Origem', 'Serviço', 'Objetivo', 'Tipo Poda', 'Conflito', 'DAP', 'Motivo detalhado', 'Latitude', 'Longitude']],
-      body: linhasTabela,
-      startY: 22,
-      styles: { fontSize: 7, cellPadding: 2 },
-      headStyles: { fillColor: [5, 150, 105], textColor: 255, fontStyle: 'bold' },
-      alternateRowStyles: { fillColor: [240, 253, 244] },
-    });
-
-    const nomeArquivo = dataInicio && dataFim && dataInicio !== dataFim ? `Relatorio_Servicos_${dataInicio}_a_${dataFim}.pdf` : `Relatorio_Servicos_${dataInicio || dataFim}.pdf`;
-    doc.save(nomeArquivo);
+    autoTable(doc, { head: [['Ponto', 'Setor', 'Nome comum', 'Nome Científico', 'Origem', 'Serviço', 'Objetivo', 'Tipo Poda', 'Conflito', 'DAP', 'Motivo detalhado', 'Latitude', 'Longitude']], body: linhasTabela, startY: 22, styles: { fontSize: 7, cellPadding: 2 }, headStyles: { fillColor: [5, 150, 105], textColor: 255 }, alternateRowStyles: { fillColor: [240, 253, 244] } });
+    doc.save(`Relatorio_Servicos_${textoData.replace(/ /g, '_').replace(/\//g, '-')}.pdf`);
   };
 
   const getIconUrl = (estado: string) => {
@@ -158,39 +167,17 @@ export default function MapaScreen() {
     return "http://maps.google.com/mapfiles/ms/icons/green-dot.png";
   };
 
+  // BOTÃO DA MIRA: Agora usa a localização já salva pelo radar, tornando o clique instantâneo
   const buscarMinhaLocalizacao = () => {
-    if (navigator.geolocation) {
-      const opcoesGPS = { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 };
-
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const lat = position.coords.latitude;
-          const lng = position.coords.longitude;
-          const precisao = position.coords.accuracy;
-
-          if (precisao > 25) {
-            alert(`Sinal de satélite fraco no momento.\nA margem de erro do celular está em ${Math.round(precisao)} metros.\n\nAguarde 5 segundos com o aplicativo aberto e clique no botão de localização novamente para "forçar" o GPS.`);
-            return; 
-          }
-
-          setMapCenter({ lat, lng });
-          setNovaLocalizacao({ lat, lng });
-          setArvoreSelecionada(null);
-          setDrawerMode("REGISTRO");
-          setIsMenuOpen(true);
-          resetarFormulario();
-        },
-        (erro) => {
-          if (erro.code === 3) {
-            alert("O GPS demorou muito para responder. Tente clicar novamente.");
-          } else {
-            alert("GPS indisponível. Erro: " + erro.message);
-          }
-        },
-        opcoesGPS
-      );
+    if (userLocation) {
+      setMapCenter(userLocation);
+      setNovaLocalizacao(userLocation);
+      setArvoreSelecionada(null);
+      setDrawerMode("REGISTRO");
+      setIsMenuOpen(true);
+      resetarFormulario();
     } else {
-      alert("Seu navegador não suporta GPS.");
+      alert("Aguardando satélite encontrar sua posição. Tente andar um pouco ou aguarde alguns segundos.");
     }
   };
 
@@ -201,6 +188,21 @@ export default function MapaScreen() {
       setNovaLocalizacao({ lat: e.latLng.lat(), lng: e.latLng.lng() });
       setArvoreSelecionada(null); setDrawerMode("REGISTRO"); setIsMenuOpen(true);
       resetarFormulario();
+    }
+  };
+
+  // FUNÇÃO DE SALVAR AO ARRASTAR O PINO
+  const handleArrastarArvore = async (e: google.maps.MapMouseEvent, id: string) => {
+    if (e.latLng) {
+      const novaLat = e.latLng.lat();
+      const novaLng = e.latLng.lng();
+      try {
+        await updateDoc(doc(db, "arvores", id), {
+          localizacao: { lat: novaLat, lng: novaLng }
+        });
+      } catch (error) {
+        alert("Erro ao reposicionar a árvore no banco de dados.");
+      }
     }
   };
 
@@ -217,21 +219,11 @@ export default function MapaScreen() {
     const formData = new FormData();
     formData.append("image", file);
     try {
-      const res = await fetch("https://api.imgbb.com/1/upload?key=d13032e91594a9d0b158de4f6c5245b2", {
-        method: "POST",
-        body: formData,
-      });
+      const res = await fetch("https://api.imgbb.com/1/upload?key=d13032e91594a9d0b158de4f6c5245b2", { method: "POST", body: formData });
       const data = await res.json();
-      if (data.success) {
-        setFotoUrl(data.data.url);
-      } else {
-        alert("Erro ao enviar foto: " + data.error.message);
-      }
-    } catch (error) {
-      alert("Erro na conexão com o servidor de imagens.");
-    } finally {
-      setUploadingFoto(false);
-    }
+      if (data.success) setFotoUrl(data.data.url);
+      else alert("Erro ao enviar foto.");
+    } catch (error) { alert("Erro na conexão com o servidor."); } finally { setUploadingFoto(false); }
   };
 
   const handleSalvarArvore = async (e: React.FormEvent) => {
@@ -249,26 +241,16 @@ export default function MapaScreen() {
 
   const handleExcluirArvore = async () => {
     if (!arvoreSelecionada) return;
-    const confirmar = window.confirm(`Tem certeza que deseja excluir a árvore ${arvoreSelecionada.especie}?`);
-    if (confirmar) {
-      try {
-        await deleteDoc(doc(db, "arvores", arvoreSelecionada.id));
-        setArvoreSelecionada(null);
-        alert("Árvore excluída com sucesso.");
-      } catch (error) {
-        alert("Ocorreu um erro ao excluir a árvore.");
-      }
+    if (window.confirm(`Excluir a árvore ${arvoreSelecionada.especie}?`)) {
+      try { await deleteDoc(doc(db, "arvores", arvoreSelecionada.id)); setArvoreSelecionada(null); alert("Árvore excluída."); } 
+      catch (error) { alert("Erro ao excluir."); }
     }
   };
 
   const abrirPainelEditar = () => {
     if (!arvoreSelecionada) return;
-    setEspecie(arvoreSelecionada.especie || ""); 
-    setNomeCientifico(arvoreSelecionada.nomeCientifico || ""); 
-    setOrigem(arvoreSelecionada.origem || "Nativa");
-    setEstadoSanitario(arvoreSelecionada.estadoSanitario || "Bom");
-    setSetor(arvoreSelecionada.setor || ""); 
-    setFotoUrl(arvoreSelecionada.fotoUrl || "");
+    setEspecie(arvoreSelecionada.especie || ""); setNomeCientifico(arvoreSelecionada.nomeCientifico || ""); setOrigem(arvoreSelecionada.origem || "Nativa");
+    setEstadoSanitario(arvoreSelecionada.estadoSanitario || "Bom"); setSetor(arvoreSelecionada.setor || ""); setFotoUrl(arvoreSelecionada.fotoUrl || "");
     setDrawerMode("EDITAR"); setIsMenuOpen(true);
   };
 
@@ -314,8 +296,22 @@ export default function MapaScreen() {
       </div>
 
       <GoogleMap mapContainerStyle={containerStyle} center={mapCenter} zoom={17} options={{ mapTypeId: "hybrid", disableDefaultUI: true, zoomControl: true, tilt: 45, draggableCursor: "crosshair" }} onClick={handleMapClick}>
+        
+        {/* RADAR DE LOCALIZAÇÃO DO USUÁRIO */}
+        {userLocation && (
+          <Marker position={userLocation} icon={{ url: iconUsuario }} zIndex={999} />
+        )}
+
+        {/* LISTAGEM DAS ÁRVORES NO BANCO */}
         {arvoresFiltradas.map((arvore) => (
-          <Marker key={arvore.id} position={arvore.localizacao} icon={{ url: getIconUrl(arvore.estadoSanitario) }} onClick={() => setArvoreSelecionada(arvore)} />
+          <Marker 
+            key={arvore.id} 
+            position={arvore.localizacao} 
+            icon={{ url: getIconUrl(arvore.estadoSanitario) }} 
+            onClick={() => setArvoreSelecionada(arvore)}
+            draggable={true} // TORNA O PINO ARRASTÁVEL
+            onDragEnd={(e) => handleArrastarArvore(e, arvore.id)} // SALVA A NOVA POSIÇÃO AO SOLTAR
+          />
         ))}
 
         {arvoreSelecionada && (
@@ -347,6 +343,8 @@ export default function MapaScreen() {
             </div>
           </InfoWindow>
         )}
+        
+        {/* PINO DE NOVO REGISTRO */}
         {novaLocalizacao && drawerMode === "REGISTRO" && isMenuOpen && (<Marker position={novaLocalizacao} icon={{ url: "http://maps.google.com/mapfiles/ms/icons/blue-dot.png" }} />)}
       </GoogleMap>
 
@@ -357,7 +355,6 @@ export default function MapaScreen() {
             <button onClick={fecharMenu} className="text-gray-400 hover:text-gray-600"><X size={28} /></button>
           </div>
           <form onSubmit={handleSalvarArvore} className="flex-1 flex flex-col space-y-5">
-            
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1">Foto da Árvore (Opcional)</label>
               <label className={`w-full flex items-center justify-center gap-2 p-3 rounded-lg border-2 border-dashed cursor-pointer transition-colors ${fotoUrl ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}>

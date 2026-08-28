@@ -42,7 +42,6 @@ export default function MapaScreen() {
   const [nomeCientifico, setNomeCientifico] = useState("");
   const [origem, setOrigem] = useState("Nativa");
   const [estadoSanitario, setEstadoSanitario] = useState("Bom");
-  // NOVO ESTADO DO SETOR
   const [setor, setSetor] = useState("");
   
   const [fotoUrl, setFotoUrl] = useState("");
@@ -50,7 +49,6 @@ export default function MapaScreen() {
 
   const { isLoaded } = useJsApiLoader({
     id: "google-map-script",
-    // COLE A SUA CHAVE VERDADEIRA AQUI EMBAIXO:
     googleMapsApiKey: "AIzaSyBCjSPO0l2BDUCeNmBsWH05kIs21gJtGk4", 
   });
 
@@ -121,12 +119,11 @@ export default function MapaScreen() {
     doc.setFontSize(16);
     doc.text(`Relatório de Execução de Serviços - Período: ${textoData}`, 14, 15);
 
-    // ATUALIZANDO AS COLUNAS COM O SETOR
     const linhasTabela = servicosDoPeriodo.map((servico, index) => {
       const arvore = arvores.find(a => a.id === servico.arvoreId) || {};
       return [
         index + 1,
-        arvore.setor || "-",           // COLUNA NOVA: Setor
+        arvore.setor || "-",
         arvore.especie || "-",
         arvore.nomeCientifico || "-",
         arvore.origem || "-",
@@ -161,26 +158,21 @@ export default function MapaScreen() {
     return "http://maps.google.com/mapfiles/ms/icons/green-dot.png";
   };
 
-const buscarMinhaLocalizacao = () => {
+  const buscarMinhaLocalizacao = () => {
     if (navigator.geolocation) {
-      // 1. Aumentamos o tempo limite para 20 segundos para dar tempo do chip "esquentar" e achar o satélite
       const opcoesGPS = { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 };
 
       navigator.geolocation.getCurrentPosition(
         (position) => {
           const lat = position.coords.latitude;
           const lng = position.coords.longitude;
-          
-          // 2. Lemos a margem de erro (em metros) que o celular está reportando
           const precisao = position.coords.accuracy;
 
-          // 3. Se a margem de erro for maior que 25 metros, recusamos a marcação!
           if (precisao > 25) {
             alert(`Sinal de satélite fraco no momento.\nA margem de erro do celular está em ${Math.round(precisao)} metros.\n\nAguarde 5 segundos com o aplicativo aberto e clique no botão de localização novamente para "forçar" o GPS.`);
-            return; // Interrompe a função aqui para não marcar a árvore no lugar errado
+            return; 
           }
 
-          // Se a precisão estiver boa (satélite conectado), segue o fluxo normal
           setMapCenter({ lat, lng });
           setNovaLocalizacao({ lat, lng });
           setArvoreSelecionada(null);
@@ -189,7 +181,6 @@ const buscarMinhaLocalizacao = () => {
           resetarFormulario();
         },
         (erro) => {
-          // Erro comum por tempo limite de busca (o timeout)
           if (erro.code === 3) {
             alert("O GPS demorou muito para responder. Tente clicar novamente.");
           } else {
@@ -214,7 +205,6 @@ const buscarMinhaLocalizacao = () => {
   };
 
   const resetarFormulario = () => {
-    // ZERANDO O SETOR TAMBÉM
     setEspecie(""); setNomeCientifico(""); setOrigem("Nativa"); setEstadoSanitario("Bom"); setSetor(""); setFotoUrl("");
   };
 
@@ -248,10 +238,8 @@ const buscarMinhaLocalizacao = () => {
     e.preventDefault(); setLoading(true);
     try {
       if (drawerMode === "EDITAR" && arvoreSelecionada) {
-        // ATUALIZANDO COM O SETOR
         await updateDoc(doc(db, "arvores", arvoreSelecionada.id), { especie, nomeCientifico, origem, estadoSanitario, setor, fotoUrl });
       } else {
-        // SALVANDO NOVO COM O SETOR
         await addDoc(collection(db, "arvores"), { especie, nomeCientifico, origem, estadoSanitario, setor, fotoUrl, dataRegistro: new Date(), localizacao: novaLocalizacao || unbCenter });
       }
       resetarFormulario(); 
@@ -279,7 +267,7 @@ const buscarMinhaLocalizacao = () => {
     setNomeCientifico(arvoreSelecionada.nomeCientifico || ""); 
     setOrigem(arvoreSelecionada.origem || "Nativa");
     setEstadoSanitario(arvoreSelecionada.estadoSanitario || "Bom");
-    setSetor(arvoreSelecionada.setor || ""); // PUXANDO O SETOR NA EDIÇÃO
+    setSetor(arvoreSelecionada.setor || ""); 
     setFotoUrl(arvoreSelecionada.fotoUrl || "");
     setDrawerMode("EDITAR"); setIsMenuOpen(true);
   };
@@ -347,7 +335,6 @@ const buscarMinhaLocalizacao = () => {
               </div>
               <p className="text-sm text-gray-700 italic mb-1">{arvoreSelecionada.nomeCientifico}</p>
               
-              {/* EXIBINDO O SETOR NO MAPA */}
               {arvoreSelecionada.setor && (
                 <p className="text-sm text-gray-700 mb-1"><strong>Setor:</strong> {arvoreSelecionada.setor}</p>
               )}
@@ -388,7 +375,6 @@ const buscarMinhaLocalizacao = () => {
               </label>
             </div>
             
-            {/* NOVO CAMPO: QUAL É O SETOR */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1">Qual é o setor?</label>
               <input type="text" value={setor} onChange={(e) => setSetor(e.target.value)} placeholder="Ex: ICC Norte, Reitoria..." className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none" required />

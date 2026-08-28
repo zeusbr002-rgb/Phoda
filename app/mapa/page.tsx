@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { GoogleMap, useJsApiLoader, Marker, InfoWindow } from "@react-google-maps/api";
-import { Search, Plus, X, Leaf, History, LocateFixed, LogOut, Calendar as CalendarIcon, Download, Edit2, Trash2, Camera } from "lucide-react";
+import { Search, Plus, X, Leaf, History, LocateFixed, LogOut, Calendar as CalendarIcon, Download, Edit2, Trash2, Camera, Zap } from "lucide-react";
 import { collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc } from "firebase/firestore";
 import { signOut, onAuthStateChanged } from "firebase/auth";
 import { db, auth } from "../firebase";
@@ -13,9 +13,256 @@ import autoTable from "jspdf-autotable";
 const containerStyle = { width: "100vw", height: "100vh" };
 const unbCenter = { lat: -15.7624, lng: -47.8664 };
 const iconMorta = 'data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2236%22%20viewBox%3D%220%200%2024%2036%22%3E%3Cpath%20fill%3D%22%23000000%22%20stroke%3D%22%23FFFFFF%22%20stroke-width%3D%222%22%20d%3D%22M12%200C5.373%200%200%205.373%200%2012c0%208.542%2012%2024%2012%2024s12-15.458%2012-24c0-6.627-5.373-12-12-12z%22%2F%3E%3Ccircle%20fill%3D%22%23FFFFFF%22%20cx%3D%2212%22%20cy%3D%2212%22%20r%3D%224%22%2F%3E%3C%2Fsvg%3E';
-
-// Ícone dinâmico azul (Estilo Radar do Google Maps)
 const iconUsuario = 'data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%3E%3Ccircle%20cx%3D%2216%22%20cy%3D%2216%22%20r%3D%2212%22%20fill%3D%22%234285F4%22%20opacity%3D%220.3%22%2F%3E%3Ccircle%20cx%3D%2216%22%20cy%3D%2216%22%20r%3D%226%22%20fill%3D%22%234285F4%22%20stroke%3D%22%23FFFFFF%22%20stroke-width%3D%222%22%2F%3E%3C%2Fsvg%3E';
+
+// =========================================================================
+// BANCO BOTÂNICO (Processado com Correções Taxonômicas e Origem)
+// =========================================================================
+const bancoBotanico = [
+  { comum: "Abacateiro", cientifico: "Persea americana", origem: "Exótica" },
+  { comum: "Acácia pompom", cientifico: "Vachellia seyal", origem: "Exótica" },
+  { comum: "Acácia", cientifico: "Vachellia farnesiana", origem: "Exótica" },
+  { comum: "Acerola", cientifico: "Malpighia glabra", origem: "Exótica" },
+  { comum: "Açoita-cavalo", cientifico: "Luehea divaricata", origem: "Nativa" },
+  { comum: "Alecrim-do-campo", cientifico: "Baccharis dracunculifolia", origem: "Nativa" },
+  { comum: "Alecrim-de-campinas", cientifico: "Holocalyx balansae", origem: "Nativa" },
+  { comum: "Ameixeira", cientifico: "Prunus sp.", origem: "Exótica" },
+  { comum: "Amendoim Bravo", cientifico: "Pterogyne nitens", origem: "Nativa" },
+  { comum: "Amoreira preta", cientifico: "Morus nigra", origem: "Exótica" },
+  { comum: "Amoreira vermelha", cientifico: "Morus rubra", origem: "Exótica" },
+  { comum: "Emburana", cientifico: "Amburana cearensis", origem: "Nativa" },
+  { comum: "Angico", cientifico: "Anadenanthera colubrina", origem: "Nativa" },
+  { comum: "Angico-branco", cientifico: "Senegalia polyphylla", origem: "Nativa" },
+  { comum: "Araruta-do-campo", cientifico: "Connarus suberosus", origem: "Nativa" },
+  { comum: "Araçá", cientifico: "Psidium salutare var. pohlianum", origem: "Nativa" },
+  { comum: "Araribá", cientifico: "Centrolobium tomentosum", origem: "Nativa" },
+  { comum: "Araucária", cientifico: "Araucaria angustifolia", origem: "Nativa" },
+  { comum: "Araticum", cientifico: "Annona mucosa", origem: "Nativa" },
+  { comum: "Areca", cientifico: "Dypsis lutescens", origem: "Exótica" },
+  { comum: "Aroeira", cientifico: "Schinus terebinthifolia", origem: "Nativa" },
+  { comum: "Aroeira salsa", cientifico: "Schinus molle", origem: "Nativa" },
+  { comum: "Assa-peixe", cientifico: "Vernonanthura polyanthes", origem: "Nativa" },
+  { comum: "Ata-de-cobra", cientifico: "Erythroxylum deciduum", origem: "Nativa" },
+  { comum: "Aveloz", cientifico: "Euphorbia tirucalli", origem: "Exótica" },
+  { comum: "Baru", cientifico: "Dipteryx alata", origem: "Nativa" },
+  { comum: "Babosa branca", cientifico: "Cordia superba", origem: "Nativa" },
+  { comum: "Bacupari-do-cerrado", cientifico: "Salacia crassifolia", origem: "Nativa" },
+  { comum: "Bambu brasileiro", cientifico: "Bambusa vulgaris", origem: "Exótica" },
+  { comum: "Barbatimão", cientifico: "Stryphnodendron adstringens", origem: "Nativa" },
+  { comum: "Barriguda", cientifico: "Ceiba glaziovii", origem: "Nativa" },
+  { comum: "Bate-caixa", cientifico: "Palicourea rigida", origem: "Nativa" },
+  { comum: "Bico-de-papagaio", cientifico: "Euphorbia pulcherrima", origem: "Exótica" },
+  { comum: "Bordão-de-velho", cientifico: "Samanea tubulosa", origem: "Nativa" },
+  { comum: "Boca-de-sapo", cientifico: "Jacaranda brasiliana", origem: "Nativa" },
+  { comum: "Boldo", cientifico: "Plectranthus barbatus", origem: "Exótica" },
+  { comum: "Buganvília", cientifico: "Bougainvillea sp.", origem: "Nativa" },
+  { comum: "Mercúrio-do-campo", cientifico: "Erythroxylum suberosum", origem: "Nativa" },
+  { comum: "Cacau", cientifico: "Theobroma cacao", origem: "Exótica" },
+  { comum: "Cafezinho", cientifico: "Myrsine guianensis", origem: "Nativa" },
+  { comum: "Cagaita", cientifico: "Eugenia dysenterica", origem: "Nativa" },
+  { comum: "Caja-manga", cientifico: "Spondias dulcis", origem: "Exótica" },
+  { comum: "Cajueiro", cientifico: "Anacardium occidentale", origem: "Nativa" },
+  { comum: "Calistemo", cientifico: "Callistemon viminalis", origem: "Exótica" },
+  { comum: "Canafístula", cientifico: "Peltophorum dubium", origem: "Nativa" },
+  { comum: "Canjerana", cientifico: "Cabralea canjerana", origem: "Nativa" },
+  { comum: "Caneleira", cientifico: "Cinnamomum zeylanicum", origem: "Exótica" },
+  { comum: "Capitão do Campo", cientifico: "Terminalia argentea", origem: "Nativa" },
+  { comum: "Carambola", cientifico: "Averrhoa carambola", origem: "Exótica" },
+  { comum: "Carnaúba", cientifico: "Copernicia prunifera", origem: "Nativa" },
+  { comum: "Caroba", cientifico: "Jacaranda brasiliana", origem: "Nativa" },
+  { comum: "Carolina", cientifico: "Adenanthera pavonina", origem: "Exótica" },
+  { comum: "Carvoeiro", cientifico: "Tachigali vulgaris", origem: "Nativa" },
+  { comum: "Carvoeiro-do-cerrado", cientifico: "Tachigali subvelutina", origem: "Nativa" },
+  { comum: "Cássia Rosa", cientifico: "Cassia grandis", origem: "Nativa" },
+  { comum: "Cassia-de-sião", cientifico: "Senna siamea", origem: "Exótica" },
+  { comum: "Casuarina", cientifico: "Casuarina equisetifolia", origem: "Exótica" },
+  { comum: "Cedro", cientifico: "Cedrela fissilis", origem: "Nativa" },
+  { comum: "Cedro-vermelho", cientifico: "Juniperus virginiana", origem: "Exótica" },
+  { comum: "Cega-machado", cientifico: "Physocalymma scaberrimum", origem: "Nativa" },
+  { comum: "Cheflera", cientifico: "Heptapleurum actinophyllum", origem: "Exótica" },
+  { comum: "Cinamomo", cientifico: "Melia azedarach", origem: "Exótica" },
+  { comum: "Clitória", cientifico: "Clitoria fairchildiana", origem: "Nativa" },
+  { comum: "Chichá", cientifico: "Sterculia striata", origem: "Nativa" },
+  { comum: "Clusia", cientifico: "Clusia rosea", origem: "Exótica" },
+  { comum: "Colher-de-pedreiro", cientifico: "Leptolobium dasycarpum", origem: "Nativa" },
+  { comum: "Copaíba", cientifico: "Copaifera langsdorffii", origem: "Nativa" },
+  { comum: "Cróton", cientifico: "Codiaeum variegatum", origem: "Exótica" },
+  { comum: "Cuité", cientifico: "Crescentia cujete", origem: "Exótica" },
+  { comum: "Curriola", cientifico: "Pouteria ramiflora", origem: "Nativa" },
+  { comum: "Embauba", cientifico: "Cecropia sp.", origem: "Nativa" },
+  { comum: "Escova-de-garrafa", cientifico: "Callistemon viminalis", origem: "Exótica" },
+  { comum: "Espatódea", cientifico: "Spathodea campanulata", origem: "Exótica" },
+  { comum: "Esponjinha", cientifico: "Vachellia farnesiana", origem: "Nativa" },
+  { comum: "Esponjinha-vermelha", cientifico: "Vachellia seyal", origem: "Exótica" },
+  { comum: "Eucalipto", cientifico: "Eucalyptus spp.", origem: "Exótica" },
+  { comum: "Faveiro", cientifico: "Dimorphandra mollis", origem: "Nativa" },
+  { comum: "Feijão-cru", cientifico: "Lonchocarpus muehlbergianus", origem: "Nativa" },
+  { comum: "Ficus benjamina", cientifico: "Ficus benjamina", origem: "Exótica" },
+  { comum: "Figueira-mata-pau", cientifico: "Ficus sp.", origem: "Nativa" },
+  { comum: "Figueira", cientifico: "Ficus elastica", origem: "Exótica" },
+  { comum: "Flamboiã", cientifico: "Delonix regia", origem: "Exótica" },
+  { comum: "Fruta do Conde", cientifico: "Annona squamosa", origem: "Nativa" },
+  { comum: "Fruta-pão", cientifico: "Artocarpus altilis", origem: "Exótica" },
+  { comum: "Gameleira", cientifico: "Ficus adhatodifolia", origem: "Nativa" },
+  { comum: "Goiabeira", cientifico: "Psidium guajava", origem: "Nativa" },
+  { comum: "Gomeira", cientifico: "Vochysia sp.", origem: "Nativa" },
+  { comum: "Gonçalo-alves", cientifico: "Astronium fraxinifolium", origem: "Nativa" },
+  { comum: "Grão-de-galo", cientifico: "Pouteria torta", origem: "Nativa" },
+  { comum: "Graviola", cientifico: "Annona muricata", origem: "Exótica" },
+  { comum: "Grevílea", cientifico: "Grevillea banksii", origem: "Exótica" },
+  { comum: "Guariroba", cientifico: "Syagrus oleracea", origem: "Nativa" },
+  { comum: "Guapuruvu", cientifico: "Schizolobium parahyba", origem: "Nativa" },
+  { comum: "Guatambu", cientifico: "Aspidosperma subincanum", origem: "Nativa" },
+  { comum: "Imburana", cientifico: "Commiphora leptophloeos", origem: "Nativa" },
+  { comum: "Ingá", cientifico: "Inga cylindrica", origem: "Nativa" },
+  { comum: "Ingá-cipó", cientifico: "Inga edulis", origem: "Nativa" },
+  { comum: "Ingá branco", cientifico: "Inga laurina", origem: "Nativa" },
+  { comum: "Ingá-feijão", cientifico: "Inga marginata", origem: "Nativa" },
+  { comum: "Ipê-amarelo", cientifico: "Handroanthus chrysotrichus", origem: "Nativa" },
+  { comum: "Ipê-rosa", cientifico: "Handroanthus heptaphyllus", origem: "Nativa" },
+  { comum: "Ipê-amarelo-do-cerrado", cientifico: "Handroanthus ochraceus", origem: "Nativa" },
+  { comum: "Ipê-branco", cientifico: "Tabebuia roseo-alba", origem: "Nativa" },
+  { comum: "Ipê-aurea", cientifico: "Tabebuia aurea", origem: "Nativa" },
+  { comum: "Ipê-Caraiba", cientifico: "Tabebuia caraiba", origem: "Nativa" },
+  { comum: "Ipê-de-jardim", cientifico: "Tecoma stans", origem: "Exótica" },
+  { comum: "Ipê-roxo", cientifico: "Handroanthus impetiginosus", origem: "Nativa" },
+  { comum: "Ipê", cientifico: "Tabebuia sp.", origem: "Nativa" },
+  { comum: "Jacarandá-bico-de-papagaio", cientifico: "Machaerium acutifolium", origem: "Nativa" },
+  { comum: "Jacarandá-do-mato", cientifico: "Machaerium villosum", origem: "Nativa" },
+  { comum: "Jacarandá-do-cerrado", cientifico: "Dalbergia miscolobium", origem: "Nativa" },
+  { comum: "Jacarandá-mimoso", cientifico: "Jacaranda mimosifolia", origem: "Exótica" },
+  { comum: "Jacarandá-cascudo", cientifico: "Machaerium opacum", origem: "Nativa" },
+  { comum: "Jacarandá-da-bahia", cientifico: "Dalbergia nigra", origem: "Nativa" },
+  { comum: "Jacarandá", cientifico: "Dalbergia nigra", origem: "Nativa" },
+  { comum: "Jambo", cientifico: "Syzygium jambos", origem: "Exótica" },
+  { comum: "Jambo-branco", cientifico: "Syzygium aqueum", origem: "Exótica" },
+  { comum: "Jambo-rosa", cientifico: "Syzygium malaccense", origem: "Exótica" },
+  { comum: "Jamelão", cientifico: "Syzygium cumini", origem: "Exótica" },
+  { comum: "Jaqueira", cientifico: "Artocarpus heterophyllus", origem: "Exótica" },
+  { comum: "Jasmim", cientifico: "Plumeria rubra", origem: "Exótica" },
+  { comum: "Jatobá", cientifico: "Hymenaea courbaril", origem: "Nativa" },
+  { comum: "Jatobá-do-cerrado", cientifico: "Hymenaea stigonocarpa", origem: "Nativa" },
+  { comum: "Jenipapo", cientifico: "Genipa americana", origem: "Nativa" },
+  { comum: "Jenipapo-de-cavalo", cientifico: "Tocoyena formosa", origem: "Nativa" },
+  { comum: "Juazeiro", cientifico: "Ziziphus joazeiro", origem: "Nativa" },
+  { comum: "Jucá", cientifico: "Libidibia ferrea", origem: "Nativa" },
+  { comum: "Landim", cientifico: "Calophyllum brasiliense", origem: "Nativa" },
+  { comum: "Laranjinha-do-cerrado", cientifico: "Styrax ferrugineus", origem: "Nativa" },
+  { comum: "Leucena", cientifico: "Leucaena leucocephala", origem: "Exótica" },
+  { comum: "Limoeiro", cientifico: "Citrus x limon", origem: "Exótica" },
+  { comum: "Lingua-de-tamanduá", cientifico: "Casearia sylvestris", origem: "Nativa" },
+  { comum: "Lixeira", cientifico: "Curatella americana", origem: "Nativa" },
+  { comum: "Lobeira", cientifico: "Solanum lycocarpum", origem: "Nativa" },
+  { comum: "Louveira", cientifico: "Cyclolobium brasiliense", origem: "Nativa" },
+  { comum: "Louro-pardo", cientifico: "Cordia trichotoma", origem: "Nativa" },
+  { comum: "Macaúba", cientifico: "Acrocomia aculeata", origem: "Nativa" },
+  { comum: "Magnólia", cientifico: "Magnolia champaca", origem: "Exótica" },
+  { comum: "Mama cadela", cientifico: "Brosimum gaudichaudii", origem: "Nativa" },
+  { comum: "Mamica-de-porca", cientifico: "Zanthoxylum rhoifolium", origem: "Nativa" },
+  { comum: "Mamoeiro", cientifico: "Carica papaya", origem: "Exótica" },
+  { comum: "Mamona", cientifico: "Ricinus communis", origem: "Exótica" },
+  { comum: "Mangabeira", cientifico: "Hancornia speciosa", origem: "Nativa" },
+  { comum: "Mandiocão", cientifico: "Didymopanax macrocarpus", origem: "Nativa" },
+  { comum: "Mangueira", cientifico: "Mangifera indica", origem: "Exótica" },
+  { comum: "Maria-preta", cientifico: "Blepharocalyx salicifolius", origem: "Nativa" },
+  { comum: "Mático", cientifico: "Piper aduncum", origem: "Nativa" },
+  { comum: "Mexerica", cientifico: "Citrus sp.", origem: "Exótica" },
+  { comum: "Milho-de-grilo", cientifico: "Aegiphila verticillata", origem: "Nativa" },
+  { comum: "Mirindiba", cientifico: "Buchenavia tomentosa", origem: "Nativa" },
+  { comum: "Mogno", cientifico: "Swietenia macrophylla", origem: "Nativa" },
+  { comum: "Munguba", cientifico: "Pachira aquatica", origem: "Nativa" },
+  { comum: "Mungulu", cientifico: "Erythrina velutina", origem: "Nativa" },
+  { comum: "Mutamba", cientifico: "Guazuma ulmifolia", origem: "Nativa" },
+  { comum: "Murici", cientifico: "Byrsonima pachyphylla", origem: "Nativa" },
+  { comum: "Murici rosa", cientifico: "Byrsonima coccolobifolia", origem: "Nativa" },
+  { comum: "Muxiba-comprida", cientifico: "Erythroxylum tortuosum", origem: "Nativa" },
+  { comum: "Nectandra", cientifico: "Nectandra sp.", origem: "Nativa" },
+  { comum: "Nim", cientifico: "Azadirachta indica", origem: "Exótica" },
+  { comum: "Noni", cientifico: "Morinda citrifolia", origem: "Exótica" },
+  { comum: "Nogueira-de-iguape", cientifico: "Aleurites moluccanus", origem: "Exótica" },
+  { comum: "Olho-de-cabra", cientifico: "Ormosia arborea", origem: "Nativa" },
+  { comum: "Olho-de-boi", cientifico: "Diospyros lasiocalyx", origem: "Nativa" },
+  { comum: "Oiti", cientifico: "Licania tomentosa", origem: "Nativa" },
+  { comum: "Orelha-de-macaco", cientifico: "Enterolobium gummiferum", origem: "Nativa" },
+  { comum: "Pacari", cientifico: "Lafoensia pacari", origem: "Nativa" },
+  { comum: "Paineira", cientifico: "Ceiba speciosa", origem: "Nativa" },
+  { comum: "Paineira-do-cerrado", cientifico: "Eriotheca pubescens", origem: "Nativa" },
+  { comum: "Pajeú", cientifico: "Triplaris gardneriana", origem: "Nativa" },
+  { comum: "Acumã", cientifico: "Syagrus flexuosa", origem: "Nativa" },
+  { comum: "Palmeira", cientifico: "Syagrus sp.", origem: "Nativa" },
+  { comum: "Palmeira Guariroba", cientifico: "Syagrus oleracea", origem: "Nativa" },
+  { comum: "Palmeira Imperial", cientifico: "Roystonea oleracea", origem: "Exótica" },
+  { comum: "Palmeira rabo de peixe", cientifico: "Caryota urens", origem: "Exótica" },
+  { comum: "Para-tudo", cientifico: "Piptocarpha rotundifolia", origem: "Nativa" },
+  { comum: "Pata-de-elefante", cientifico: "Beaucarnea recurvata", origem: "Exótica" },
+  { comum: "Pata-de-vaca", cientifico: "Bauhinia forficata", origem: "Nativa" },
+  { comum: "Pata-de-vaca-lilás", cientifico: "Bauhinia variegata", origem: "Exótica" },
+  { comum: "Pata de vaca-branca", cientifico: "Bauhinia variegata var. candida", origem: "Exótica" },
+  { comum: "Pau-bosta", cientifico: "Tachigali aurea", origem: "Nativa" },
+  { comum: "Pau-brasil", cientifico: "Paubrasilia echinata", origem: "Nativa" },
+  { comum: "Pau-d'agua", cientifico: "Dracaena sp.", origem: "Exótica" },
+  { comum: "Pau-de-balsa", cientifico: "Ochroma pyramidale", origem: "Nativa" },
+  { comum: "Pau-Pólvora", cientifico: "Trema micrantha", origem: "Nativa" },
+  { comum: "Pau-fava", cientifico: "Senna macranthera", origem: "Nativa" },
+  { comum: "Pau-ferro", cientifico: "Libidibia ferrea var. leiostachya", origem: "Nativa" },
+  { comum: "Pau-formiga", cientifico: "Triplaris americana", origem: "Nativa" },
+  { comum: "Pau-Jacaré", cientifico: "Piptadenia gonoacantha", origem: "Nativa" },
+  { comum: "Folha-santa", cientifico: "Kielmeyera speciosa", origem: "Nativa" },
+  { comum: "Pau-santo", cientifico: "Kielmeyera coriacea", origem: "Nativa" },
+  { comum: "Pau-terra", cientifico: "Qualea parviflora", origem: "Nativa" },
+  { comum: "Pau-tucano", cientifico: "Vochysia tucanorum", origem: "Nativa" },
+  { comum: "Peito-de-pombo", cientifico: "Tapirira guianensis", origem: "Nativa" },
+  { comum: "Pequizeiro", cientifico: "Caryocar brasiliense", origem: "Nativa" },
+  { comum: "Perobinha", cientifico: "Aspidosperma tomentosum", origem: "Nativa" },
+  { comum: "Pimenta-de-macaco", cientifico: "Piper aduncum", origem: "Nativa" },
+  { comum: "Pingo de ouro", cientifico: "Duranta erecta", origem: "Exótica" },
+  { comum: "Pinheiro", cientifico: "Pinus elliottii", origem: "Exótica" },
+  { comum: "Pitangueira", cientifico: "Eugenia uniflora", origem: "Nativa" },
+  { comum: "Pitomba", cientifico: "Talisia esculenta", origem: "Nativa" },
+  { comum: "Pixirica", cientifico: "Miconia sp.", origem: "Nativa" },
+  { comum: "Pombeiro", cientifico: "Tapirira guianensis", origem: "Nativa" },
+  { comum: "Primavera", cientifico: "Bougainvillea sp.", origem: "Nativa" },
+  { comum: "Pau-terra-grande", cientifico: "Qualea grandiflora", origem: "Nativa" },
+  { comum: "Quaresmeira", cientifico: "Pleroma granulosum", origem: "Nativa" },
+  { comum: "Rambutão", cientifico: "Nephelium lappaceum", origem: "Exótica" },
+  { comum: "Romã", cientifico: "Punica granatum", origem: "Exótica" },
+  { comum: "Sansão-do-campo", cientifico: "Mimosa caesalpiniifolia", origem: "Nativa" },
+  { comum: "Sabiá", cientifico: "Mimosa caesalpiniifolia", origem: "Nativa" },
+  { comum: "Saboneiteira", cientifico: "Sapindus saponaria", origem: "Nativa" },
+  { comum: "Saguaraji", cientifico: "Colubrina glandulosa", origem: "Nativa" },
+  { comum: "Sete-Copas", cientifico: "Terminalia catappa", origem: "Exótica" },
+  { comum: "Seriguela", cientifico: "Spondias purpurea", origem: "Exótica" },
+  { comum: "Seringueira", cientifico: "Hevea brasiliensis", origem: "Nativa" },
+  { comum: "Sibipiruna", cientifico: "Cenostigma pluviosum", origem: "Nativa" },
+  { comum: "Sucupira", cientifico: "Pterodon pubescens", origem: "Nativa" },
+  { comum: "Sucupira-branca", cientifico: "Pterodon emarginatus", origem: "Nativa" },
+  { comum: "Sucupira-preta", cientifico: "Bowdichia virgilioides", origem: "Nativa" },
+  { comum: "Tamarindo", cientifico: "Tamarindus indica", origem: "Exótica" },
+  { comum: "Tarumarana", cientifico: "Buchenavia tomentosa", origem: "Nativa" },
+  { comum: "Tamboril", cientifico: "Enterolobium contortisiliquum", origem: "Nativa" },
+  { comum: "Tataré", cientifico: "Chloroleucon tortum", origem: "Nativa" },
+  { comum: "Tento-carolina", cientifico: "Adenanthera pavonina", origem: "Exótica" },
+  { comum: "Tingui do cerrado", cientifico: "Magonia pubescens", origem: "Nativa" },
+  { comum: "Tipuana", cientifico: "Tipuana tipu", origem: "Exótica" },
+  { comum: "Vassoura-de-bruxa", cientifico: "Ouratea hexasperma", origem: "Nativa" },
+  { comum: "Vinhático", cientifico: "Plathymenia reticulata", origem: "Nativa" }
+];
+
+// Funções Matemáticas para o "Fuzzy Match"
+const removerAcentos = (str: string) => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+const calcularDistanciaLevenshtein = (a: string, b: string) => {
+  const matrix = Array.from({ length: b.length + 1 }, (_, i) => [i]);
+  for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b.charAt(i - 1) === a.charAt(j - 1)) matrix[i][j] = matrix[i - 1][j - 1];
+      else matrix[i][j] = Math.min(matrix[i - 1][j - 1] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j] + 1);
+    }
+  }
+  return matrix[b.length][a.length];
+};
+// =========================================================================
 
 export default function MapaScreen() {
   const router = useRouter();
@@ -37,7 +284,6 @@ export default function MapaScreen() {
   const [novaLocalizacao, setNovaLocalizacao] = useState<{lat: number, lng: number} | null>(null);
   const [arvoreSelecionada, setArvoreSelecionada] = useState<any | null>(null);
   
-  // ESTADOS DO NOVO RASTREAMENTO CONTÍNUO
   const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
   const [mapaInicializado, setMapaInicializado] = useState(false);
 
@@ -53,13 +299,15 @@ export default function MapaScreen() {
   
   const [fotoUrl, setFotoUrl] = useState("");
   const [uploadingFoto, setUploadingFoto] = useState(false);
+  
+  // Efeito Visual de Autocompletar
+  const [foiAutocompletado, setFoiAutocompletado] = useState(false);
 
   const { isLoaded } = useJsApiLoader({
     id: "google-map-script",
     googleMapsApiKey: "AIzaSyBCjSPO0l2BDUCeNmBsWH05kIs21gJtGk4", 
   });
 
-  // EFEITO DE RASTREAMENTO (Fica monitorando os passos da pessoa)
   useEffect(() => {
     if (navigator.geolocation) {
       const watchId = navigator.geolocation.watchPosition(
@@ -67,12 +315,8 @@ export default function MapaScreen() {
           const lat = position.coords.latitude;
           const lng = position.coords.longitude;
           const precisao = position.coords.accuracy;
-
-          // Atualiza a bolinha azul se a precisão estiver razoável
           if (precisao <= 40) {
             setUserLocation({ lat, lng });
-
-            // Se for a primeira vez que acha o sinal, joga a câmera para a pessoa
             if (!mapaInicializado) {
               setMapCenter({ lat, lng });
               setMapaInicializado(true);
@@ -82,8 +326,6 @@ export default function MapaScreen() {
         (erro) => console.log("Aguardando sinal GPS...", erro),
         { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
       );
-
-      // Limpa o rastreador ao fechar o app
       return () => navigator.geolocation.clearWatch(watchId);
     }
   }, [mapaInicializado]);
@@ -167,7 +409,6 @@ export default function MapaScreen() {
     return "http://maps.google.com/mapfiles/ms/icons/green-dot.png";
   };
 
-  // BOTÃO DA MIRA: Agora usa a localização já salva pelo radar, tornando o clique instantâneo
   const buscarMinhaLocalizacao = () => {
     if (userLocation) {
       setMapCenter(userLocation);
@@ -191,15 +432,10 @@ export default function MapaScreen() {
     }
   };
 
-  // FUNÇÃO DE SALVAR AO ARRASTAR O PINO
   const handleArrastarArvore = async (e: google.maps.MapMouseEvent, id: string) => {
     if (e.latLng) {
-      const novaLat = e.latLng.lat();
-      const novaLng = e.latLng.lng();
       try {
-        await updateDoc(doc(db, "arvores", id), {
-          localizacao: { lat: novaLat, lng: novaLng }
-        });
+        await updateDoc(doc(db, "arvores", id), { localizacao: { lat: e.latLng.lat(), lng: e.latLng.lng() } });
       } catch (error) {
         alert("Erro ao reposicionar a árvore no banco de dados.");
       }
@@ -207,7 +443,7 @@ export default function MapaScreen() {
   };
 
   const resetarFormulario = () => {
-    setEspecie(""); setNomeCientifico(""); setOrigem("Nativa"); setEstadoSanitario("Bom"); setSetor(""); setFotoUrl("");
+    setEspecie(""); setNomeCientifico(""); setOrigem("Nativa"); setEstadoSanitario("Bom"); setSetor(""); setFotoUrl(""); setFoiAutocompletado(false);
   };
 
   const fecharMenu = () => { setIsMenuOpen(false); setNovaLocalizacao(null); };
@@ -223,7 +459,7 @@ export default function MapaScreen() {
       const data = await res.json();
       if (data.success) setFotoUrl(data.data.url);
       else alert("Erro ao enviar foto.");
-    } catch (error) { alert("Erro na conexão com o servidor."); } finally { setUploadingFoto(false); }
+    } catch (error) { alert("Erro na conexão."); } finally { setUploadingFoto(false); }
   };
 
   const handleSalvarArvore = async (e: React.FormEvent) => {
@@ -239,6 +475,7 @@ export default function MapaScreen() {
     } catch (error) { alert("Erro ao salvar."); } finally { setLoading(false); }
   };
 
+  // FUNÇÃO DE EXCLUIR DE VOLTA AO LUGAR
   const handleExcluirArvore = async () => {
     if (!arvoreSelecionada) return;
     if (window.confirm(`Excluir a árvore ${arvoreSelecionada.especie}?`)) {
@@ -251,7 +488,47 @@ export default function MapaScreen() {
     if (!arvoreSelecionada) return;
     setEspecie(arvoreSelecionada.especie || ""); setNomeCientifico(arvoreSelecionada.nomeCientifico || ""); setOrigem(arvoreSelecionada.origem || "Nativa");
     setEstadoSanitario(arvoreSelecionada.estadoSanitario || "Bom"); setSetor(arvoreSelecionada.setor || ""); setFotoUrl(arvoreSelecionada.fotoUrl || "");
-    setDrawerMode("EDITAR"); setIsMenuOpen(true);
+    setFoiAutocompletado(false); setDrawerMode("EDITAR"); setIsMenuOpen(true);
+  };
+
+  // =========================================================================
+  // GATILHO DO AUTOCOMPLETAR (Roda toda vez que digita uma letra)
+  // =========================================================================
+  const handleDigitacaoNomeComum = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const valor = e.target.value;
+    setEspecie(valor);
+
+    if (valor.length >= 3) {
+      const valorNorm = removerAcentos(valor);
+      let melhorMatch: any = null; // TIPO 'any' ADICIONADO PARA CORRIGIR O ERRO
+      let menorDistancia = Infinity;
+
+      bancoBotanico.forEach(arvore => {
+        const comumNorm = removerAcentos(arvore.comum);
+        
+        if (comumNorm.includes(valorNorm)) {
+          melhorMatch = arvore;
+          menorDistancia = 0;
+        } 
+        else {
+          const distancia = calcularDistanciaLevenshtein(valorNorm, comumNorm);
+          if (distancia < menorDistancia && distancia <= Math.min(3, Math.floor(valor.length / 2))) {
+            menorDistancia = distancia;
+            melhorMatch = arvore;
+          }
+        }
+      });
+
+      if (melhorMatch) {
+        setNomeCientifico(melhorMatch.cientifico);
+        setOrigem(melhorMatch.origem);
+        setFoiAutocompletado(true);
+      } else {
+        setFoiAutocompletado(false);
+      }
+    } else {
+      setFoiAutocompletado(false);
+    }
   };
 
   if (!isLoaded) return <div className="flex items-center justify-center min-h-screen bg-emerald-50 text-emerald-800">Carregando satélite...</div>;
@@ -297,20 +574,12 @@ export default function MapaScreen() {
 
       <GoogleMap mapContainerStyle={containerStyle} center={mapCenter} zoom={17} options={{ mapTypeId: "hybrid", disableDefaultUI: true, zoomControl: true, tilt: 45, draggableCursor: "crosshair" }} onClick={handleMapClick}>
         
-        {/* RADAR DE LOCALIZAÇÃO DO USUÁRIO */}
-        {userLocation && (
-          <Marker position={userLocation} icon={{ url: iconUsuario }} zIndex={999} />
-        )}
+        {userLocation && <Marker position={userLocation} icon={{ url: iconUsuario }} zIndex={999} />}
 
-        {/* LISTAGEM DAS ÁRVORES NO BANCO */}
         {arvoresFiltradas.map((arvore) => (
           <Marker 
-            key={arvore.id} 
-            position={arvore.localizacao} 
-            icon={{ url: getIconUrl(arvore.estadoSanitario) }} 
-            onClick={() => setArvoreSelecionada(arvore)}
-            draggable={true} // TORNA O PINO ARRASTÁVEL
-            onDragEnd={(e) => handleArrastarArvore(e, arvore.id)} // SALVA A NOVA POSIÇÃO AO SOLTAR
+            key={arvore.id} position={arvore.localizacao} icon={{ url: getIconUrl(arvore.estadoSanitario) }} 
+            onClick={() => setArvoreSelecionada(arvore)} draggable={true} onDragEnd={(e) => handleArrastarArvore(e, arvore.id)}
           />
         ))}
 
@@ -330,11 +599,7 @@ export default function MapaScreen() {
                 </div>
               </div>
               <p className="text-sm text-gray-700 italic mb-1">{arvoreSelecionada.nomeCientifico}</p>
-              
-              {arvoreSelecionada.setor && (
-                <p className="text-sm text-gray-700 mb-1"><strong>Setor:</strong> {arvoreSelecionada.setor}</p>
-              )}
-              
+              {arvoreSelecionada.setor && <p className="text-sm text-gray-700 mb-1"><strong>Setor:</strong> {arvoreSelecionada.setor}</p>}
               <p className="text-sm text-gray-700 mb-1"><strong>Origem:</strong> {arvoreSelecionada.origem}</p>
               <p className="text-sm text-gray-700 mb-4"><strong>Condição:</strong> <span className={`ml-1 font-bold ${arvoreSelecionada.estadoSanitario === 'Morta' ? 'text-black' : ''}`}>{arvoreSelecionada.estadoSanitario}</span></p>
               <button onClick={() => router.push(`/dashboard?id=${arvoreSelecionada.id}`)} className="w-full bg-blue-600 text-white text-sm font-bold py-2 rounded shadow hover:bg-blue-700 transition-colors flex items-center gap-2 justify-center">
@@ -344,7 +609,6 @@ export default function MapaScreen() {
           </InfoWindow>
         )}
         
-        {/* PINO DE NOVO REGISTRO */}
         {novaLocalizacao && drawerMode === "REGISTRO" && isMenuOpen && (<Marker position={novaLocalizacao} icon={{ url: "http://maps.google.com/mapfiles/ms/icons/blue-dot.png" }} />)}
       </GoogleMap>
 
@@ -365,7 +629,7 @@ export default function MapaScreen() {
                 ) : (
                   <>
                     <Camera size={20} />
-                    <span className="font-medium text-sm">Abrir Câmera / Galeria</span>
+                    <span className="font-medium text-sm">Abrir Câmera</span>
                   </>
                 )}
                 <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFotoUpload} disabled={uploadingFoto} />
@@ -379,19 +643,29 @@ export default function MapaScreen() {
 
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1">Nome Comum</label>
-              <input type="text" value={especie} onChange={(e) => setEspecie(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none" required />
+              <input type="text" value={especie} onChange={handleDigitacaoNomeComum} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none" required />
             </div>
-            <div>
+            
+            <div className="relative">
               <label className="block text-sm font-semibold text-gray-700 mb-1">Nome Científico</label>
-              <input type="text" value={nomeCientifico} onChange={(e) => setNomeCientifico(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none" required />
+              <input type="text" value={nomeCientifico} onChange={(e) => {setNomeCientifico(e.target.value); setFoiAutocompletado(false);}} className={`w-full p-3 border rounded-lg outline-none transition-colors ${foiAutocompletado ? 'bg-blue-50 border-blue-300 text-blue-800' : 'bg-gray-50 border-gray-200 text-gray-900'}`} required />
+              
+              {/* O TÍTULO FOI MOVIDO PARA O SPAN PARA CORRIGIR O ERRO DO ÍCONE */}
+              {foiAutocompletado && (
+                <span title="Preenchido automaticamente!" className="absolute right-3 top-9 cursor-help">
+                  <Zap size={16} className="text-blue-500" />
+                </span>
+              )}
             </div>
+
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1">Origem</label>
-              <select value={origem} onChange={(e) => setOrigem(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none">
+              <select value={origem} onChange={(e) => setOrigem(e.target.value)} className={`w-full p-3 border rounded-lg outline-none transition-colors ${foiAutocompletado ? 'bg-blue-50 border-blue-300 text-blue-800' : 'bg-gray-50 border-gray-200 text-gray-900'}`}>
                 <option value="Nativa">Nativa</option>
                 <option value="Exótica">Exótica</option>
               </select>
             </div>
+
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1">Condição Fitossanitária</label>
               <select value={estadoSanitario} onChange={(e) => setEstadoSanitario(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none">
@@ -401,6 +675,7 @@ export default function MapaScreen() {
                 <option value="Morta">Morta (Suprimida)</option>
               </select>
             </div>
+            
             <div className="mt-auto pt-6 pb-4">
               <button type="submit" disabled={loading || uploadingFoto} className="w-full bg-emerald-600 text-white font-bold py-4 rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50">
                 {loading ? "Salvando..." : "Salvar no Banco"}

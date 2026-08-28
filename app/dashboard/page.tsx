@@ -23,6 +23,9 @@ function HistoricoContent() {
   const [modoEdicao, setModoEdicao] = useState(false);
   const [servicoEditandoId, setServicoEditandoId] = useState<string | null>(null);
 
+  // NOVO ESTADO: CONTROLE DA FOTO EM TELA CHEIA
+  const [fotoExpandida, setFotoExpandida] = useState<string | null>(null);
+
   const [tipoServico, setTipoServico] = useState("Poda");
   const [objetivoPoda, setObjetivoPoda] = useState("");
   const [tipoPoda, setTipoPoda] = useState("");
@@ -98,7 +101,6 @@ function HistoricoContent() {
     }
   };
 
-  // FUNÇÃO DE PREENCHER O FORMULÁRIO COM O SERVIÇO ANTIGO PARA EDITAR
   const abrirEdicao = (servico: any) => {
     setModoEdicao(true);
     setServicoEditandoId(servico.id);
@@ -115,7 +117,6 @@ function HistoricoContent() {
     setFotoAntes(servico.fotoAntes || "");
     setFotoDepois(servico.fotoDepois || "");
 
-    // Rola a página suavemente para o topo para a pessoa ver o formulário
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -151,13 +152,11 @@ function HistoricoContent() {
       };
 
       if (modoEdicao && servicoEditandoId) {
-        // ATUALIZANDO UM SERVIÇO EXISTENTE
         await updateDoc(doc(db, "historico_servicos", servicoEditandoId), dadosServico);
         alert("Serviço atualizado com sucesso!");
         setModoEdicao(false);
         setServicoEditandoId(null);
       } else {
-        // CRIANDO UM SERVIÇO NOVO
         await addDoc(collection(db, "historico_servicos"), {
           ...dadosServico,
           arvoreId: arvoreId,
@@ -186,7 +185,7 @@ function HistoricoContent() {
   if (!arvore) return <div className="min-h-screen flex items-center justify-center font-bold text-emerald-800">Carregando prontuário...</div>;
 
   return (
-    <div className="min-h-screen bg-emerald-50 p-4 md:p-8">
+    <div className="min-h-screen bg-emerald-50 p-4 md:p-8 relative">
       <div className="max-w-7xl mx-auto">
         <header className="flex items-start gap-4 mb-8">
           <button onClick={() => router.push('/mapa')} className="bg-white p-3 rounded-full shadow hover:bg-gray-50 text-emerald-700 mt-1">
@@ -200,8 +199,13 @@ function HistoricoContent() {
             <p className="text-emerald-700 font-medium mb-3">
               Condição: <span className={`font-bold ${arvore.estadoSanitario === "Morta" ? "text-red-600" : ""}`}>{arvore.estadoSanitario}</span>
             </p>
+            {/* FOTO DA ÁRVORE (AGORA CLICÁVEL) */}
             {arvore.fotoUrl && (
-              <div className="w-full md:w-64 h-40 bg-gray-200 rounded-xl overflow-hidden border-2 border-emerald-100 shadow-sm">
+              <div 
+                onClick={() => setFotoExpandida(arvore.fotoUrl)}
+                className="w-full md:w-64 h-40 bg-gray-200 rounded-xl overflow-hidden border-2 border-emerald-100 shadow-sm cursor-pointer hover:opacity-90 transition-opacity"
+                title="Clique para ampliar a foto"
+              >
                 <img src={arvore.fotoUrl} alt={`Foto de ${arvore.especie}`} className="w-full h-full object-cover" />
               </div>
             )}
@@ -297,7 +301,6 @@ function HistoricoContent() {
                 </div>
               </div>
 
-              {/* CAMPOS DE TEXTO AGORA SÃO OPCIONAIS (sem o required) */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-gray-100 pt-4">
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-1">Equipe / Responsável <span className="font-normal text-xs text-gray-400">(Opcional)</span></label>
@@ -314,7 +317,6 @@ function HistoricoContent() {
                 <textarea value={detalhes} onChange={(e) => setDetalhes(e.target.value)} placeholder="Informações adicionais da execução..." className="w-full p-3 h-20 bg-gray-50 border border-gray-200 rounded-lg outline-none resize-none"/>
               </div>
 
-              {/* SEÇÃO DE FOTOS (OPCIONAIS) */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-gray-100 pt-4">
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-2">Foto: ANTES <span className="font-normal text-xs text-gray-400">(Opcional)</span></label>
@@ -351,7 +353,6 @@ function HistoricoContent() {
                 </div>
               </div>
 
-              {/* BOTOES DE AÇÃO */}
               <div className="flex gap-3 mt-2">
                 {modoEdicao && (
                   <button type="button" onClick={cancelarEdicao} className="w-1/3 bg-gray-200 text-gray-700 font-bold py-4 rounded-xl hover:bg-gray-300 transition-all text-lg">
@@ -388,7 +389,6 @@ function HistoricoContent() {
                       </span>
                     </div>
 
-                    {/* BOTÃO DE EDITAR NO CARD DO HISTÓRICO */}
                     <button onClick={() => abrirEdicao(servico)} title="Editar este serviço" className="absolute top-4 right-4 p-2 text-gray-400 hover:text-amber-600 bg-white rounded-full shadow-sm border border-gray-100 hover:border-amber-200 transition-colors">
                       <Edit2 size={16} />
                     </button>
@@ -411,16 +411,17 @@ function HistoricoContent() {
                     
                     {servico.detalhes && <p className="text-sm text-gray-600 mt-2 bg-white p-2 rounded border border-gray-100 italic">"{servico.detalhes}"</p>}
 
+                    {/* FOTOS DO HISTÓRICO (AGORA CLICÁVEIS) */}
                     {(servico.fotoAntes || servico.fotoDepois) && (
                       <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-gray-200">
                         {servico.fotoAntes && (
-                          <div className="flex flex-col gap-1">
+                          <div className="flex flex-col gap-1 cursor-pointer hover:opacity-90 transition-opacity" onClick={() => setFotoExpandida(servico.fotoAntes)} title="Clique para ampliar">
                             <span className="text-[10px] font-extrabold text-gray-500 uppercase tracking-wider text-center">Antes</span>
                             <img src={servico.fotoAntes} alt="Foto do Antes" className="w-full h-28 object-cover rounded shadow-sm border border-gray-300" />
                           </div>
                         )}
                         {servico.fotoDepois && (
-                          <div className="flex flex-col gap-1">
+                          <div className="flex flex-col gap-1 cursor-pointer hover:opacity-90 transition-opacity" onClick={() => setFotoExpandida(servico.fotoDepois)} title="Clique para ampliar">
                             <span className="text-[10px] font-extrabold text-gray-500 uppercase tracking-wider text-center">Depois</span>
                             <img src={servico.fotoDepois} alt="Foto do Depois" className="w-full h-28 object-cover rounded shadow-sm border border-gray-300" />
                           </div>
@@ -433,8 +434,32 @@ function HistoricoContent() {
               )}
             </div>
           </div>
-
         </div>
+
+        {/* MODAL DE FOTO EXPANDIDA (TELA CHEIA) */}
+        {fotoExpandida && (
+          <div 
+            className="fixed inset-0 z-[9999] bg-black/90 flex items-center justify-center p-4 cursor-pointer"
+            onClick={() => setFotoExpandida(null)}
+          >
+            <div className="relative max-w-5xl w-full h-full flex items-center justify-center">
+              <button 
+                className="absolute top-4 right-4 text-white bg-black/50 rounded-full p-2 hover:bg-black/80 transition-colors"
+                onClick={() => setFotoExpandida(null)}
+                title="Fechar (ou clique fora da imagem)"
+              >
+                <X size={32} />
+              </button>
+              <img 
+                src={fotoExpandida} 
+                alt="Foto Ampliada" 
+                className="max-w-full max-h-full object-contain rounded-lg shadow-2xl" 
+                onClick={(e) => e.stopPropagation()} // Impede que clicar dentro da foto feche, fecha apenas se clicar fora/fundo
+              />
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );

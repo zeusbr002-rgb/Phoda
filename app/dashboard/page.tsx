@@ -3,8 +3,7 @@ import React, { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { collection, onSnapshot, doc, getDoc, addDoc, query, where, updateDoc } from "firebase/firestore";
 import { db } from "../firebase";
-// ADICIONEI O ÍCONE 'Camera' AQUI:
-import { ArrowLeft, Plus, Leaf, ClipboardCheck, Calendar, Skull, Camera } from "lucide-react";
+import { ArrowLeft, Plus, Leaf, ClipboardCheck, Calendar, Skull, Camera, Edit2, X } from "lucide-react";
 
 const listaConflitos = [
   "Vias", "Estacionamento", "Prédios", "Calçadas", 
@@ -20,6 +19,10 @@ function HistoricoContent() {
   const [historico, setHistorico] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
+  // CONTROLE DE EDIÇÃO
+  const [modoEdicao, setModoEdicao] = useState(false);
+  const [servicoEditandoId, setServicoEditandoId] = useState<string | null>(null);
+
   const [tipoServico, setTipoServico] = useState("Poda");
   const [objetivoPoda, setObjetivoPoda] = useState("");
   const [tipoPoda, setTipoPoda] = useState("");
@@ -30,7 +33,6 @@ function HistoricoContent() {
   const [equipamentos, setEquipamentos] = useState("");
   const [detalhes, setDetalhes] = useState("");
 
-  // NOVOS ESTADOS PARA AS FOTOS ANTES E DEPOIS
   const [fotoAntes, setFotoAntes] = useState("");
   const [fotoDepois, setFotoDepois] = useState("");
   const [uploadingAntes, setUploadingAntes] = useState(false);
@@ -65,7 +67,6 @@ function HistoricoContent() {
     }
   };
 
-  // FUNÇÃO DE UPLOAD (Reutiliza a mesma chave do ImgBB)
   const handleFotoUpload = async (e: React.ChangeEvent<HTMLInputElement>, tipo: 'antes' | 'depois') => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -97,13 +98,45 @@ function HistoricoContent() {
     }
   };
 
+  // FUNÇÃO DE PREENCHER O FORMULÁRIO COM O SERVIÇO ANTIGO PARA EDITAR
+  const abrirEdicao = (servico: any) => {
+    setModoEdicao(true);
+    setServicoEditandoId(servico.id);
+    
+    setTipoServico(servico.tipoServico || "Poda");
+    setObjetivoPoda(servico.objetivoPoda || "");
+    setTipoPoda(servico.tipoPoda || "");
+    setMotivoQueda(servico.motivoQueda || "");
+    setDap(servico.dap || "");
+    setConflitos(servico.conflitos || []);
+    setEquipe(servico.equipe || "");
+    setEquipamentos(servico.equipamentos || "");
+    setDetalhes(servico.detalhes || "");
+    setFotoAntes(servico.fotoAntes || "");
+    setFotoDepois(servico.fotoDepois || "");
+
+    // Rola a página suavemente para o topo para a pessoa ver o formulário
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const cancelarEdicao = () => {
+    setModoEdicao(false);
+    setServicoEditandoId(null);
+    resetarFormulario();
+  };
+
+  const resetarFormulario = () => {
+    setTipoServico("Poda"); setObjetivoPoda(""); setTipoPoda(""); setMotivoQueda(""); setDap(""); 
+    setConflitos([]); setEquipe(""); setEquipamentos(""); setDetalhes(""); 
+    setFotoAntes(""); setFotoDepois("");
+  };
+
   const handleSalvarServico = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      await addDoc(collection(db, "historico_servicos"), {
-        arvoreId: arvoreId,
+      const dadosServico = {
         tipoServico,
         objetivoPoda: tipoServico === "Poda" ? objetivoPoda : null,
         tipoPoda: tipoServico === "Poda" ? tipoPoda : null,
@@ -113,23 +146,34 @@ function HistoricoContent() {
         equipe,
         equipamentos,
         detalhes,
-        fotoAntes,   // SALVANDO A FOTO ANTES
-        fotoDepois,  // SALVANDO A FOTO DEPOIS
-        dataExecucao: new Date()
-      });
+        fotoAntes,
+        fotoDepois
+      };
 
-      if (tipoServico === "Supressão") {
-        await updateDoc(doc(db, "arvores", arvoreId as string), { estadoSanitario: "Morta" });
-        setArvore({...arvore, estadoSanitario: "Morta"});
-        alert("Serviço registrado! A árvore foi marcada como Morta no mapa.");
+      if (modoEdicao && servicoEditandoId) {
+        // ATUALIZANDO UM SERVIÇO EXISTENTE
+        await updateDoc(doc(db, "historico_servicos", servicoEditandoId), dadosServico);
+        alert("Serviço atualizado com sucesso!");
+        setModoEdicao(false);
+        setServicoEditandoId(null);
       } else {
-        alert("Serviço registrado com sucesso!");
+        // CRIANDO UM SERVIÇO NOVO
+        await addDoc(collection(db, "historico_servicos"), {
+          ...dadosServico,
+          arvoreId: arvoreId,
+          dataExecucao: new Date()
+        });
+        
+        if (tipoServico === "Supressão") {
+          await updateDoc(doc(db, "arvores", arvoreId as string), { estadoSanitario: "Morta" });
+          setArvore({...arvore, estadoSanitario: "Morta"});
+          alert("Serviço registrado! A árvore foi marcada como Morta no mapa.");
+        } else {
+          alert("Serviço registrado com sucesso!");
+        }
       }
 
-      setObjetivoPoda(""); setTipoPoda(""); setMotivoQueda(""); setDap(""); 
-      setConflitos([]); setEquipe(""); setEquipamentos(""); 
-      setDetalhes(""); setTipoServico("Poda");
-      setFotoAntes(""); setFotoDepois(""); // LIMPANDO FOTOS APÓS SALVAR
+      resetarFormulario();
 
     } catch (error) {
       console.error(error);
@@ -156,7 +200,6 @@ function HistoricoContent() {
             <p className="text-emerald-700 font-medium mb-3">
               Condição: <span className={`font-bold ${arvore.estadoSanitario === "Morta" ? "text-red-600" : ""}`}>{arvore.estadoSanitario}</span>
             </p>
-            {/* EXIBE A FOTO ORIGINAL DA ÁRVORE (SE EXISTIR) */}
             {arvore.fotoUrl && (
               <div className="w-full md:w-64 h-40 bg-gray-200 rounded-xl overflow-hidden border-2 border-emerald-100 shadow-sm">
                 <img src={arvore.fotoUrl} alt={`Foto de ${arvore.especie}`} className="w-full h-full object-cover" />
@@ -167,9 +210,10 @@ function HistoricoContent() {
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           
-          <div className="lg:col-span-7 bg-white p-6 rounded-2xl shadow-lg border-t-4 border-blue-500">
-            <h2 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
-              <Plus size={20} className="text-blue-500"/> Registrar Serviço Executado
+          <div className={`lg:col-span-7 bg-white p-6 rounded-2xl shadow-lg border-t-4 ${modoEdicao ? 'border-amber-500' : 'border-blue-500'}`}>
+            <h2 className={`text-xl font-bold mb-6 flex items-center gap-2 ${modoEdicao ? 'text-amber-600' : 'text-gray-800'}`}>
+              {modoEdicao ? <Edit2 size={20}/> : <Plus size={20} className="text-blue-500"/>} 
+              {modoEdicao ? "Editando Registro de Serviço" : "Registrar Serviço Executado"}
             </h2>
             
             <form onSubmit={handleSalvarServico} className="flex flex-col gap-6">
@@ -253,26 +297,27 @@ function HistoricoContent() {
                 </div>
               </div>
 
+              {/* CAMPOS DE TEXTO AGORA SÃO OPCIONAIS (sem o required) */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-gray-100 pt-4">
                 <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-1">Equipe / Responsável</label>
-                  <input type="text" value={equipe} onChange={(e) => setEquipe(e.target.value)} placeholder="Ex: João, Matrícula 123" required className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none"/>
+                  <label className="block text-sm font-bold text-gray-700 mb-1">Equipe / Responsável <span className="font-normal text-xs text-gray-400">(Opcional)</span></label>
+                  <input type="text" value={equipe} onChange={(e) => setEquipe(e.target.value)} placeholder="Ex: João, Matrícula 123" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none"/>
                 </div>
                 <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-1">Equipamentos Usados</label>
-                  <input type="text" value={equipamentos} onChange={(e) => setEquipamentos(e.target.value)} placeholder="Ex: Motosserra, Caminhão Munck" required className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none"/>
+                  <label className="block text-sm font-bold text-gray-700 mb-1">Equipamentos Usados <span className="font-normal text-xs text-gray-400">(Opcional)</span></label>
+                  <input type="text" value={equipamentos} onChange={(e) => setEquipamentos(e.target.value)} placeholder="Ex: Motosserra" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none"/>
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1">Observações Finais</label>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Observações Finais <span className="font-normal text-xs text-gray-400">(Opcional)</span></label>
                 <textarea value={detalhes} onChange={(e) => setDetalhes(e.target.value)} placeholder="Informações adicionais da execução..." className="w-full p-3 h-20 bg-gray-50 border border-gray-200 rounded-lg outline-none resize-none"/>
               </div>
 
-              {/* SEÇÃO DE FOTOS (ANTES E DEPOIS) */}
+              {/* SEÇÃO DE FOTOS (OPCIONAIS) */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-gray-100 pt-4">
                 <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">Foto: ANTES do Serviço</label>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">Foto: ANTES <span className="font-normal text-xs text-gray-400">(Opcional)</span></label>
                   <label className={`w-full flex flex-col items-center justify-center gap-2 p-3 h-28 rounded-lg border-2 border-dashed cursor-pointer transition-colors ${fotoAntes ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}>
                     {uploadingAntes ? (
                       <span className="font-medium text-sm text-gray-600">Enviando imagem...</span>
@@ -289,7 +334,7 @@ function HistoricoContent() {
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">Foto: DEPOIS do Serviço</label>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">Foto: DEPOIS <span className="font-normal text-xs text-gray-400">(Opcional)</span></label>
                   <label className={`w-full flex flex-col items-center justify-center gap-2 p-3 h-28 rounded-lg border-2 border-dashed cursor-pointer transition-colors ${fotoDepois ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}>
                     {uploadingDepois ? (
                       <span className="font-medium text-sm text-gray-600">Enviando imagem...</span>
@@ -306,9 +351,17 @@ function HistoricoContent() {
                 </div>
               </div>
 
-              <button type="submit" disabled={loading || uploadingAntes || uploadingDepois} className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl hover:bg-blue-700 transition-all shadow-lg hover:shadow-xl text-lg mt-2 disabled:opacity-50">
-                {loading ? "Registrando..." : "Confirmar e Salvar Histórico"}
-              </button>
+              {/* BOTOES DE AÇÃO */}
+              <div className="flex gap-3 mt-2">
+                {modoEdicao && (
+                  <button type="button" onClick={cancelarEdicao} className="w-1/3 bg-gray-200 text-gray-700 font-bold py-4 rounded-xl hover:bg-gray-300 transition-all text-lg">
+                    Cancelar
+                  </button>
+                )}
+                <button type="submit" disabled={loading || uploadingAntes || uploadingDepois} className={`flex-1 text-white font-bold py-4 rounded-xl transition-all shadow-lg hover:shadow-xl text-lg disabled:opacity-50 ${modoEdicao ? 'bg-amber-500 hover:bg-amber-600' : 'bg-blue-600 hover:bg-blue-700'}`}>
+                  {loading ? "Salvando..." : (modoEdicao ? "Atualizar Serviço" : "Confirmar e Salvar Histórico")}
+                </button>
+              </div>
             </form>
           </div>
 
@@ -322,8 +375,8 @@ function HistoricoContent() {
                 <div className="text-center text-gray-400 font-medium py-10 border-2 border-dashed border-gray-200 rounded-xl">Nenhum serviço registrado nesta árvore.</div>
               ) : (
                 historico.map((servico) => (
-                  <div key={servico.id} className="bg-gray-50 p-5 rounded-xl border border-gray-200 flex flex-col gap-3 shadow-sm">
-                    <div className="flex justify-between items-center border-b border-gray-200 pb-2">
+                  <div key={servico.id} className="bg-gray-50 p-5 rounded-xl border border-gray-200 flex flex-col gap-3 shadow-sm relative group">
+                    <div className="flex justify-between items-center border-b border-gray-200 pb-2 pr-8">
                       <span className={`font-extrabold uppercase tracking-wide px-2 py-1 rounded text-sm ${
                         servico.tipoServico === 'Supressão' ? 'bg-red-100 text-red-800' :
                         servico.tipoServico === 'Queda' ? 'bg-orange-100 text-orange-800' : 'bg-blue-100 text-blue-800'
@@ -334,13 +387,18 @@ function HistoricoContent() {
                         {servico.dataExecucao?.toDate().toLocaleDateString("pt-BR", { day: '2-digit', month: '2-digit', year: 'numeric' })}
                       </span>
                     </div>
+
+                    {/* BOTÃO DE EDITAR NO CARD DO HISTÓRICO */}
+                    <button onClick={() => abrirEdicao(servico)} title="Editar este serviço" className="absolute top-4 right-4 p-2 text-gray-400 hover:text-amber-600 bg-white rounded-full shadow-sm border border-gray-100 hover:border-amber-200 transition-colors">
+                      <Edit2 size={16} />
+                    </button>
                     
-                    <div className="text-sm text-gray-700 grid grid-cols-1 gap-1">
+                    <div className="text-sm text-gray-700 grid grid-cols-1 gap-1 mt-1">
                       {servico.tipoServico === "Poda" && <p><strong>Poda {servico.objetivoPoda}:</strong> {servico.tipoPoda}</p>}
                       {servico.tipoServico === "Queda" && <p><strong>Motivo da Queda:</strong> {servico.motivoQueda}</p>}
                       <p><strong>DAP:</strong> {servico.dap}</p>
-                      <p><strong>Equipe:</strong> {servico.equipe}</p>
-                      <p><strong>Equipamentos:</strong> {servico.equipamentos}</p>
+                      {servico.equipe && <p><strong>Equipe:</strong> {servico.equipe}</p>}
+                      {servico.equipamentos && <p><strong>Equipamentos:</strong> {servico.equipamentos}</p>}
                     </div>
                     
                     {servico.conflitos?.length > 0 && (
@@ -353,7 +411,6 @@ function HistoricoContent() {
                     
                     {servico.detalhes && <p className="text-sm text-gray-600 mt-2 bg-white p-2 rounded border border-gray-100 italic">"{servico.detalhes}"</p>}
 
-                    {/* GALERIA DE FOTOS ANTES E DEPOIS NO HISTÓRICO */}
                     {(servico.fotoAntes || servico.fotoDepois) && (
                       <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-gray-200">
                         {servico.fotoAntes && (

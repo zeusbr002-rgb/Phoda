@@ -28,7 +28,7 @@ export default function LoginScreen() {
       } else {
         // Tenta Criar a Conta
         await createUserWithEmailAndPassword(auth, email, senha);
-        alert("Conta criada com sucesso! Bem-vindo ao Phoda.");
+        alert("Conta criada com sucesso! Bem-vindo ao Guapira.");
       }
       router.push("/mapa"); // Entra no mapa se der tudo certo
     } catch (error: any) {
@@ -59,7 +59,7 @@ export default function LoginScreen() {
             <Leaf size={40} />
           </div>
           {/* O NOME DO APP ATUALIZADO AQUI */}
-          <h1 className="text-4xl font-extrabold text-gray-800 tracking-tight">Phoda</h1>
+          <h1 className="text-4xl font-extrabold text-gray-800 tracking-tight">Guapira</h1>
           <p className="text-gray-500 font-medium text-sm mt-1 text-center">Gestão de Paisagismo e Áreas Verdes</p>
         </div>
 

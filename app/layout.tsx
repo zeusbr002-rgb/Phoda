@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Phoda - Gestão de Paisagismo",
+  title: "Guapira - Gestão de Poda e Supressão",
   description: "Plataforma de Gestão de Áreas Verdes da UnB",
   manifest: "/manifest.json",
 };

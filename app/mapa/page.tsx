@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { GoogleMap, useJsApiLoader, Marker, InfoWindow } from "@react-google-maps/api";
-import { Search, Plus, X, Leaf, History, LocateFixed, LogOut, Calendar as CalendarIcon, Download, Edit2, Trash2, Camera, Zap } from "lucide-react";
+import { Search, Plus, X, Leaf, History, LocateFixed, LogOut, Calendar as CalendarIcon, Download, Edit2, Trash2, Camera, Zap, Move } from "lucide-react";
 import { collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc } from "firebase/firestore";
 import { signOut, onAuthStateChanged } from "firebase/auth";
 import { db, auth } from "../firebase";
@@ -16,7 +16,7 @@ const iconMorta = 'data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%
 const iconUsuario = 'data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%3E%3Ccircle%20cx%3D%2216%22%20cy%3D%2216%22%20r%3D%2212%22%20fill%3D%22%234285F4%22%20opacity%3D%220.3%22%2F%3E%3Ccircle%20cx%3D%2216%22%20cy%3D%2216%22%20r%3D%226%22%20fill%3D%22%234285F4%22%20stroke%3D%22%23FFFFFF%22%20stroke-width%3D%222%22%2F%3E%3C%2Fsvg%3E';
 
 // =========================================================================
-// BANCO BOTÂNICO (Processado com Correções Taxonômicas e Origem)
+// BANCO BOTÂNICO
 // =========================================================================
 const bancoBotanico = [
   { comum: "Abacateiro", cientifico: "Persea americana", origem: "Exótica" },
@@ -284,6 +284,9 @@ export default function MapaScreen() {
   const [novaLocalizacao, setNovaLocalizacao] = useState<{lat: number, lng: number} | null>(null);
   const [arvoreSelecionada, setArvoreSelecionada] = useState<any | null>(null);
   
+  // NOVO ESTADO: Controla qual árvore está com o pino destravado
+  const [modoMovimentacao, setModoMovimentacao] = useState<string | null>(null);
+
   const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
   const [mapaInicializado, setMapaInicializado] = useState(false);
 
@@ -300,7 +303,6 @@ export default function MapaScreen() {
   const [fotoUrl, setFotoUrl] = useState("");
   const [uploadingFoto, setUploadingFoto] = useState(false);
   
-  // Efeito Visual de Autocompletar
   const [foiAutocompletado, setFoiAutocompletado] = useState(false);
 
   const { isLoaded } = useJsApiLoader({
@@ -436,6 +438,8 @@ export default function MapaScreen() {
     if (e.latLng) {
       try {
         await updateDoc(doc(db, "arvores", id), { localizacao: { lat: e.latLng.lat(), lng: e.latLng.lng() } });
+        setModoMovimentacao(null); // Trava o pino novamente logo após soltar!
+        alert("Nova posição da árvore salva com sucesso!");
       } catch (error) {
         alert("Erro ao reposicionar a árvore no banco de dados.");
       }
@@ -475,7 +479,6 @@ export default function MapaScreen() {
     } catch (error) { alert("Erro ao salvar."); } finally { setLoading(false); }
   };
 
-  // FUNÇÃO DE EXCLUIR DE VOLTA AO LUGAR
   const handleExcluirArvore = async () => {
     if (!arvoreSelecionada) return;
     if (window.confirm(`Excluir a árvore ${arvoreSelecionada.especie}?`)) {
@@ -491,16 +494,13 @@ export default function MapaScreen() {
     setFoiAutocompletado(false); setDrawerMode("EDITAR"); setIsMenuOpen(true);
   };
 
-  // =========================================================================
-  // GATILHO DO AUTOCOMPLETAR (Roda toda vez que digita uma letra)
-  // =========================================================================
   const handleDigitacaoNomeComum = (e: React.ChangeEvent<HTMLInputElement>) => {
     const valor = e.target.value;
     setEspecie(valor);
 
     if (valor.length >= 3) {
       const valorNorm = removerAcentos(valor);
-      let melhorMatch: any = null; // TIPO 'any' ADICIONADO PARA CORRIGIR O ERRO
+      let melhorMatch: any = null; 
       let menorDistancia = Infinity;
 
       bancoBotanico.forEach(arvore => {
@@ -578,13 +578,19 @@ export default function MapaScreen() {
 
         {arvoresFiltradas.map((arvore) => (
           <Marker 
-            key={arvore.id} position={arvore.localizacao} icon={{ url: getIconUrl(arvore.estadoSanitario) }} 
-            onClick={() => setArvoreSelecionada(arvore)} draggable={true} onDragEnd={(e) => handleArrastarArvore(e, arvore.id)}
+            key={arvore.id} 
+            position={arvore.localizacao} 
+            icon={{ url: getIconUrl(arvore.estadoSanitario) }} 
+            onClick={() => setArvoreSelecionada(arvore)} 
+            
+            /* AQUI ESTÁ A MÁGICA DA TRAVA! O pino só arrasta se o ID bater com o modoMovimentacao */
+            draggable={modoMovimentacao === arvore.id} 
+            onDragEnd={(e) => handleArrastarArvore(e, arvore.id)}
           />
         ))}
 
         {arvoreSelecionada && (
-          <InfoWindow position={arvoreSelecionada.localizacao} onCloseClick={() => setArvoreSelecionada(null)}>
+          <InfoWindow position={arvoreSelecionada.localizacao} onCloseClick={() => { setArvoreSelecionada(null); setModoMovimentacao(null); }}>
             <div className="p-2 min-w-[200px]">
               {arvoreSelecionada.fotoUrl && (
                 <div className="mb-3 w-full h-28 bg-gray-100 rounded-lg overflow-hidden border border-gray-200">
@@ -593,7 +599,21 @@ export default function MapaScreen() {
               )}
               <div className="flex justify-between items-start border-b border-emerald-100 pb-1 mb-2">
                 <h3 className="font-bold text-lg text-emerald-800">{arvoreSelecionada.especie}</h3>
+                
                 <div className="flex gap-3 text-gray-400">
+                  
+                  {/* NOVO BOTÃO DE DESTRAVAR PINO */}
+                  <button 
+                    onClick={() => {
+                      setModoMovimentacao(arvoreSelecionada.id);
+                      alert("Pino destravado! Arraste-o no mapa para corrigir a posição.");
+                    }} 
+                    title="Mover Pino" 
+                    className={`hover:text-blue-600 transition-colors ${modoMovimentacao === arvoreSelecionada.id ? 'text-blue-600' : ''}`}
+                  >
+                    <Move size={18} />
+                  </button>
+
                   <button onClick={abrirPainelEditar} title="Editar" className="hover:text-emerald-600"><Edit2 size={18} /></button>
                   <button onClick={handleExcluirArvore} title="Excluir" className="hover:text-red-600"><Trash2 size={18} /></button>
                 </div>
@@ -650,7 +670,6 @@ export default function MapaScreen() {
               <label className="block text-sm font-semibold text-gray-700 mb-1">Nome Científico</label>
               <input type="text" value={nomeCientifico} onChange={(e) => {setNomeCientifico(e.target.value); setFoiAutocompletado(false);}} className={`w-full p-3 border rounded-lg outline-none transition-colors ${foiAutocompletado ? 'bg-blue-50 border-blue-300 text-blue-800' : 'bg-gray-50 border-gray-200 text-gray-900'}`} required />
               
-              {/* O TÍTULO FOI MOVIDO PARA O SPAN PARA CORRIGIR O ERRO DO ÍCONE */}
               {foiAutocompletado && (
                 <span title="Preenchido automaticamente!" className="absolute right-3 top-9 cursor-help">
                   <Zap size={16} className="text-blue-500" />
